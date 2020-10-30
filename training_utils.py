@@ -1,4 +1,3 @@
-import argparse
 from utils import *
 from torch.utils.data.dataset import *
 from torch.utils.data.sampler import *
@@ -12,16 +11,18 @@ import torch.optim as optim
 import numpy as np
 import time
 
+root_dir = "/home/radmard/repos/AL4ST/"
+
 charset = Charset()
 vocab = Vocabulary()
-vocab.load("data/NYT_CoType/vocab.txt")
+vocab.load(f"{root_dir}data/NYT_CoType/vocab.txt")
 tag_set = Index()
-tag_set.load("data/NYT_CoType/tag2id.txt")
+tag_set.load(f"{root_dir}data/NYT_CoType/tag2id.txt")
 relation_labels = Index()
-relation_labels.load("data/NYT_CoType/relation_labels.txt")
+relation_labels.load(f"{root_dir}data/NYT_CoType/relation_labels.txt")
 
-train_data = load("data/NYT_CoType/train.pk")[:100]
-test_data = load("data/NYT_CoType/test.pk")[:10]
+train_data = load(f"{root_dir}data/NYT_CoType/train.pk")[:50000]
+test_data = load(f"{root_dir}data/NYT_CoType/test.pk")[:5000]
 # CHANGED FOR DEBUG
 val_size = int(0.01 * len(train_data))
 train_data, val_data = random_split(train_data, [len(train_data) - val_size, val_size])
@@ -125,7 +126,7 @@ train_data_groups = group(train_data, [10, 20, 30, 40, 50, 60])
 val_data_groups = group(val_data, [10, 20, 30, 40, 50, 60])
 test_data_groups = group(test_data, [10, 20, 30, 40, 50, 60])
 
-word_embeddings = torch.tensor(np.load("data/NYT_CoType/word2vec.vectors.npy"))
+word_embeddings = torch.tensor(np.load(f"{root_dir}data/NYT_CoType/word2vec.vectors.npy"))
 word_embedding_size = word_embeddings.size(1)
 pad_embedding = torch.empty(1, word_embedding_size).uniform_(-0.5, 0.5)
 unk_embedding = torch.empty(1, word_embedding_size).uniform_(-0.5, 0.5)

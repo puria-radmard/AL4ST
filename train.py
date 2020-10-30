@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--batch_size", type=int, default=32, metavar="N", help="batch size (default: 32)"
 )
-parser.add_argument("--cuda", action="store_false", help="use CUDA (default: True)")
+parser.add_argument("--cuda", default=False, action="store_false", help="use CUDA (default: True)")
 parser.add_argument(
     "--dropout",
     type=float,
@@ -107,45 +107,47 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-# Set the random seed manually for reproducibility.
-torch.manual_seed(args.seed)
-if torch.cuda.is_available():
-    if not args.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+if __name__ == '__main__':
 
-print(args)
-device = torch.device("cuda" if args.cuda else "cpu")
+    # Set the random seed manually for reproducibility.
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        if not args.cuda:
+            print("WARNING: You have a CUDA device, so you should probably run with --cuda")
 
-char_channels = [args.emsize] + [args.char_nhid] * args.char_layers
-word_channels = [word_embedding_size + args.char_nhid] + [
-    args.word_nhid
-] * args.word_layers
+    print(args)
+    device = torch.device("cuda" if args.cuda else "cpu")
 
-
-if os.path.exists("model.pt"):
-    model = torch.load("model.pt")
-else:
-    model = Model(
-        charset_size=len(charset),
-        char_embedding_size=args.emsize,
-        char_channels=char_channels,
-        char_padding_idx=charset["<pad>"],
-        char_kernel_size=args.char_kernel_size,
-        weight=word_embeddings,
-        word_embedding_size=word_embedding_size,
-        word_channels=word_channels,
-        word_kernel_size=args.word_kernel_size,
-        num_tag=len(tag_set),
-        dropout=args.dropout,
-        emb_dropout=args.emb_dropout,
-    ).to(device)
+    char_channels = [args.emsize] + [args.char_nhid] * args.char_layers
+    word_channels = [word_embedding_size + args.char_nhid] + [
+        args.word_nhid
+    ] * args.word_layers
 
 
-weight = [args.weight] * len(tag_set)
-weight[tag_set["O"]] = 1
-weight = torch.tensor(weight).to(device)
-criterion = nn.NLLLoss(weight, size_average=False)
-optimizer = getattr(optim, args.optim)(model.parameters(), lr=args.lr)
+    if os.path.exists("model.pt"):
+        model = torch.load("model.pt")
+    else:
+        model = Model(
+            charset_size=len(charset),
+            char_embedding_size=args.emsize,
+            char_channels=char_channels,
+            char_padding_idx=charset["<pad>"],
+            char_kernel_size=args.char_kernel_size,
+            weight=word_embeddings,
+            word_embedding_size=word_embedding_size,
+            word_channels=word_channels,
+            word_kernel_size=args.word_kernel_size,
+            num_tag=len(tag_set),
+            dropout=args.dropout,
+            emb_dropout=args.emb_dropout,
+        ).to(device)
+
+
+    weight = [args.weight] * len(tag_set)
+    weight[tag_set["O"]] = 1
+    weight = torch.tensor(weight).to(device)
+    criterion = nn.NLLLoss(weight, size_average=False)
+    optimizer = getattr(optim, args.optim)(model.parameters(), lr=args.lr)
 
 
 def train():
