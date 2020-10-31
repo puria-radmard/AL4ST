@@ -38,7 +38,8 @@ def configure_al_agent(args, device, model, train_data, test_data):
     else:
         raise ValueError(args.acquisition)
 
-    class AgentClass(selector, acquisition_class):
+
+    class AgentClass(ActiveLearningDataset, selector, acquisition_class):
 
         def __init__(
             self,
@@ -50,7 +51,8 @@ def configure_al_agent(args, device, model, train_data, test_data):
             model,
             device,
         ):
-            super(AgentClass, self).__init__(
+            ActiveLearningDataset.__init__(
+                self,
                 train_data=train_data,
                 test_data=test_data,
                 num_sentences_init=num_sentences_init,
@@ -59,6 +61,8 @@ def configure_al_agent(args, device, model, train_data, test_data):
                 model=model,
                 device=device
             )
+            selector.__init__(self)
+            acquisition_class.__init__(self)
 
     agent = AgentClass(
         train_data=train_data,
@@ -331,13 +335,13 @@ class ActiveLearningDataset(object):
 class FullSentenceSelector(object):
 
     def __init__(self, **kwargs):
-        pass
+        super().__init__()
 
     def score_aggregation(self, scores_list):
         # Just take the per-word normalised score list.
         # This is the average score of each word for the whole sentence
         sentence_score = sum(scores_list)/len(scores_list)
-        return sentence_score,
+        return sentence_score
 
     def score_extraction(self, scores_list):
         """
@@ -392,7 +396,7 @@ class WordWindowSelector(object):
 class RandomBaselineAcquisition(object):
 
     def __init__(self, **kwargs):
-        pass
+        super().__init__()
 
     def word_scoring_func(self, sentences, tokens, model):
         # Preds can be random here since we are using full sentences
@@ -404,7 +408,7 @@ class RandomBaselineAcquisition(object):
 class LowestConfidenceAcquisition(object):
 
     def __init__(self, **kwargs):
-        pass
+        super().__init__()
 
     def word_scoring_func(self, sentences, tokens, model):
         model_output = model(
@@ -421,7 +425,7 @@ class LowestConfidenceAcquisition(object):
 class MaximumEntropyAcquisition(object):
 
     def __init__(self, **kwargs):
-        pass
+        super().__init__()
 
     def word_scoring_func(self, sentences, tokens, model):
         model_output = model(
@@ -429,9 +433,7 @@ class MaximumEntropyAcquisition(object):
         ).detach().cpu()  # Log probabilities of shape [batch_size (1), length_of_sentence, num_tags (193)]
         _, preds = model_output[0].max(dim=1)
         preds = preds.cpu().numpy().reshape(-1).tolist()
-        entropies = torch.sum(
-            -model_output*np.exp(model_output)[0], dim = -1).cpu().numpy().reshape(-1)
-        ).tolist()
+        entropies = torch.sum(-model_output*np.exp(model_output)[0], dim = -1).cpu().numpy().reshape(-1).tolist()
 
         # Take most likely sequence but then minus it - i.e. low probs score highly
         return (entropies, preds)
@@ -442,6 +444,7 @@ class BALDAcquisition(object):
     def __init__(self, **kwargs):
         # We might want to set a range of ps and change them using model.*.p = p[i] during the M runs
         self.M = 100
+        super().__init__()
 
     def word_scoring_func(self, sentences, tokens, model):
         # Preds can be random here since we are using full sentences
@@ -450,13 +453,18 @@ class BALDAcquisition(object):
         preds = preds.cpu().numpy().reshape(-1).tolist()
 
         # Do the M forward passes:
-        dropout_model_preds = [
-            model(sentences, tokens).detach().cpu()[0].max(dim=1)[1].numpy() for _ in range(self.M) # TODO: Fix for batch size
-        ] # list of self.M tensors of size (seq_len)
-        dropout_model_preds = np.dstack(dropout_model_preds, dim=-1) # Of size (seq_len, self.M)
-        majority_vote = np.array([np.argmax(np.bincount(dropout_model_preds[i])) for i in range(self.M)])
+        model.char_encoder.drop.train()
+        model.word_encoder.drop.train()
+        model.drop.train()
+
+        dropout_model_preds = [model(sentences, tokens).detach().cpu()[0].max(dim=1)[1].numpy() for _ in range(self.M)] # list of self.M tensors of size (seq_len)
+        dropout_model_preds = np.dstack(dropout_model_preds)[0] # Of size (seq_len, self.M)
+        majority_vote = np.array([np.argmax(np.bincount(dropout_model_preds[:,i])) for i in range(self.M)])
         scores = 1 - np.array(
             [sum(dropout_model_preds[j] == majority_vote[j]) for j in range(dropout_model_preds.shape[0])]
         ) / self.M
+
+        model.eval()
+
         return scores, preds
 

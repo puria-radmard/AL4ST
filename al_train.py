@@ -37,7 +37,7 @@ parser.add_argument(
 parser.add_argument(
     "--batch_size", type=int, default=32, metavar="N", help="batch size (default: 32)"
 )
-parser.add_argument("--cuda", default=False, action="store_false", help="use CUDA (default: True)")
+parser.add_argument("--cuda", default=True, action="store_false", help="use CUDA (default: True)")
 parser.add_argument(
     "--dropout",
     type=float,
@@ -151,7 +151,7 @@ def make_root_dir(args):
         config_file.write(f"Number of acquisitions per round: {args.roundsize} \n")
         config_file.write(f"\n")
         config_file.write(f"Acquisition strategy: {args.acquisition} \n")
-        config_file.write(f"Size of windows (-1 means whole sentence): {args.acquisition} \n")
+        config_file.write(f"Size of windows (-1 means whole sentence): {args.window} \n")
         config_file.write(f"\n")
         config_file.write(f"All args: \n")
         for k, v in vars(args).items():
@@ -248,8 +248,8 @@ def train(model, al_agent):
         output = model(sentences, tokens)
         # output in shape [batch_size, length_of_sentence, num_tags (193)]
 
-        output = pack_padded_sequence(output, lengths, batch_first=True).data
-        targets = pack_padded_sequence(targets, lengths, batch_first=True).data
+        output = pack_padded_sequence(output, lengths.cpu(), batch_first=True).data
+        targets = pack_padded_sequence(targets, lengths.cpu(), batch_first=True).data
         loss = criterion(output, targets)
         loss.backward()
         if args.clip > 0:
@@ -307,8 +307,8 @@ def evaluate(model, data_groups):
             TP += tp
             TP_FP += tp_fp
             TP_FN += tp_fn
-            output = pack_padded_sequence(output, lengths, batch_first=True).data
-            targets = pack_padded_sequence(targets, lengths, batch_first=True).data
+            output = pack_padded_sequence(output, lengths.cpu(), batch_first=True).data
+            targets = pack_padded_sequence(targets, lengths.cpu(), batch_first=True).data
             loss = criterion(output, targets)
             total_loss += loss.item()
 
@@ -481,6 +481,7 @@ if __name__ == "__main__":
 
         print(f"Finished logging round {round}")
 
+        model.eval()
         agent.update_indices(model)
         agent.update_datasets(model)
         round += 1
