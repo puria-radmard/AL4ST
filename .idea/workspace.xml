@@ -27,8 +27,6 @@
   <component name="ChangeListManager">
     <list default="true" id="6091c5b4-2dea-4115-a3b0-3d512debaca2" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/active_learning.py" beforeDir="false" afterPath="$PROJECT_DIR$/active_learning.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/al_train.py" beforeDir="false" afterPath="$PROJECT_DIR$/al_train.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -284,7 +282,7 @@
       <workItem from="1603823423547" duration="2162000" />
       <workItem from="1604072744429" duration="8730000" />
       <workItem from="1604083713817" duration="7504000" />
-      <workItem from="1604153844562" duration="9486000" />
+      <workItem from="1604153844562" duration="9807000" />
     </task>
     <servers />
   </component>
