@@ -445,7 +445,7 @@ class LowestConfidenceAcquisition(object):
         model_output = model(
             sentences, tokens
         ).detach().cpu()  # Log probabilities of shape [batch_size (1), length_of_sentence, num_tags (193)]
-        scores = -(model_output[0].max(dim=1)[0].cpu().numpy().reshape(-1)).tolist()
+        scores = (-model_output[0].max(dim=1)[0].cpu().numpy().reshape(-1)).tolist()
         # Take most likely sequence but then minus it - i.e. low probs score highly
         return scores
 
