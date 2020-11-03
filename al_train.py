@@ -30,6 +30,9 @@ parser.add_argument(
 parser.add_argument(
     "--earlystopping", type=int, help="number of epochs of F1 decrease before early stopping", default=3
 )
+parser.add_argument(
+    "--temperature", type=float, help="Temperature of predictionannealing ", default=1.0
+)
 # parser.add_argument(
 #     "--labelthres", type=float, help="proportion of sentence that must be manually labelled before it is used for training", required = True
 # )
@@ -177,6 +180,7 @@ def make_model():
         num_tag=len(tag_set),
         dropout=args.dropout,
         emb_dropout=args.emb_dropout,
+        T=args.temperature
     ).to(device)
 
 
@@ -187,8 +191,8 @@ word_channels = [word_embedding_size + args.char_nhid] + [
 weight = [args.weight] * len(tag_set)
 weight[tag_set["O"]] = 1
 weight = torch.tensor(weight).to(device)
-criterion = nn.NLLLoss(weight, size_average=False)
 
+criterion = ModifiedKL(weight)
 
 def early_stopping_original(f1_list, num):
     if len(f1_list) < num:
@@ -215,6 +219,7 @@ def measure(output, targets, lengths):
     tp_fn = 0
     batch_size = output.size(0)
     output = torch.argmax(output, dim=-1)
+    targets = torch.argmax(targets, dim=-1)
     for i in range(batch_size):
         length = lengths[i]
         out = output[i][:length].tolist()
@@ -230,27 +235,28 @@ def measure(output, targets, lengths):
     return tp, tp_fp, tp_fn
 
 
-def train(model, al_agent):
+def train_epoch(model, al_agent, start_time, epoch):
     model.train()
     total_loss = 0
     count = 0
     sampler = al_agent.labelled_batch_indices
 
     for idx, batch_indices in enumerate(sampler):
-        sentences, tokens, targets, lengths = get_batch(
-            batch_indices, al_agent.autolabelled_data, device
-        )
 
-        # [vocab[int(a)] for a in sentences[10]] reveals sentence
-        # [tag_set[int(a)] for a in targets[10]] reveals corresponding taglist
+        model.eval()
+        sentences, tokens, targets, lengths, kl_mask = al_agent.selector.get_batch(
+            batch_indices, al_agent, model
+        )
+        model.train()
 
         optimizer.zero_grad()
         output = model(sentences, tokens)
         # output in shape [batch_size, length_of_sentence, num_tags (193)]
 
-        output = pack_padded_sequence(output, lengths.cpu(), batch_first=True).data
-        targets = pack_padded_sequence(targets, lengths.cpu(), batch_first=True).data
-        loss = criterion(output, targets)
+        # output = pack_padded_sequence(output, lengths.cpu(), batch_first=True).data
+        # targets = pack_padded_sequence(targets, lengths.cpu(), batch_first=True).data
+
+        loss = criterion(output, targets, kl_mask)
         loss.backward()
         if args.clip > 0:
             nn.utils.clip_grad_norm_(model.parameters(), args.clip)
@@ -275,7 +281,7 @@ def train(model, al_agent):
                     len(sampler),
                     time_display(elapsed),
                     time_display(remaining),
-                    lr,
+                    args.lr,
                     cur_loss,
                 )
             )
@@ -296,8 +302,8 @@ def evaluate(model, data_groups):
         for batch_indices in tqdm(
                 GroupBatchRandomSampler(data_groups, args.batch_size, drop_last=False)
         ):
-            sentences, tokens, targets, lengths = get_batch(
-                batch_indices, train_data, device
+            sentences, tokens, targets, lengths, kl_mask = get_batch(
+                batch_indices, val_data, device
             )
 
             output = model(sentences, tokens)
@@ -307,9 +313,8 @@ def evaluate(model, data_groups):
             TP += tp
             TP_FP += tp_fp
             TP_FN += tp_fn
-            output = pack_padded_sequence(output, lengths.cpu(), batch_first=True).data
-            targets = pack_padded_sequence(targets, lengths.cpu(), batch_first=True).data
-            loss = criterion(output, targets)
+
+            loss = criterion(output, targets, kl_mask)
             total_loss += loss.item()
 
             count += len(targets)
@@ -318,6 +323,164 @@ def evaluate(model, data_groups):
     if TP_FN == 0:
         TP_FN = 1
     return total_loss / count, TP / TP_FP, TP / TP_FN, 2 * TP / (TP_FP + TP_FN)
+
+
+def train_full(model):
+
+    lr = args.lr
+    all_val_loss = []
+    all_precision = []
+    all_recall = []
+    all_f1 = []
+
+    start_time = time.time()
+    print("-" * 118)
+
+    word_inds = [v for k, v in agent.labelled_idx.items() if v]
+    num_sentences = len(word_inds)
+    num_words = sum([len(b) for b in word_inds])
+
+    print(
+        f"Starting training with {num_words} words labelled in {num_sentences} sentences"
+    )
+    for epoch in range(1, args.epochs + 1):
+
+        if early_stopping(all_f1, 1):  # args.earlystopping):
+            break
+
+        train_epoch(model, agent, start_time, epoch)
+
+        val_loss, precision, recall, f1 = evaluate(model, val_data_groups)
+
+        elapsed = time.time() - start_time
+        print(
+            "| End of Epoch {:2d} | Elapsed Time {:s} | Validation Loss {:5.3f} | Precision {:5.3f} "
+            "| Recall {:5.3f} | F1 {:5.3f} |".format(
+                epoch, time_display(elapsed), val_loss, precision, recall, f1
+            )
+        )
+
+        # Anneal the learning rate if no improvement has been seen in the validation dataset.
+        lr = lr / 4.0
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr
+        all_val_loss.append(val_loss)
+        all_precision.append(precision)
+        all_recall.append(recall)
+        all_f1.append(f1)
+
+        break
+
+    return (
+        num_words,
+        num_sentences,
+        all_val_loss,
+        all_precision,
+        all_recall,
+        all_f1
+    )
+
+
+def log_round(root_dir, num_words, num_sentences, agent):
+
+    round_dir = os.path.join(root_dir, f"round-{round}")
+    os.mkdir(round_dir)
+    print(f"Logging round {round}")
+
+    with open(
+            os.path.join(round_dir, f"record.tsv"), "wt", encoding="utf-8"
+    ) as f:
+        f.write(
+            f"{num_words} words in {num_sentences} sentences. Total {len(train_data)} sentences.\n\n"
+        )
+        f.write("Epoch\tLOSS\tPREC\tRECL\tF1\n")
+        for idx in range(len(all_val_loss)):
+            f.write(
+                "{:d}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
+                    idx + 1,
+                    all_val_loss[idx],
+                    all_precision[idx],
+                    all_recall[idx],
+                    all_f1[idx],
+                )
+            )
+        f.write(
+            "\n{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
+                test_loss, precision, recall, f1
+            )
+        )
+
+    with open(
+            os.path.join(round_dir, f"sentence_prop-{round}.tsv"), "wt", encoding="utf-8"
+    ) as f:
+
+        f.write("Proportions of sentences in words that have been manually labelled \n")
+        f.write("The remainder of the words in the sentence have been automatically labelled by")
+        f.write("the model before training, as per the threshold argument (if implemented) \n")
+        f.write("\n")
+
+        i = 0
+        for sentence_idx, labelled_idx in agent.labelled_idx.items():
+            num_labelled = len(labelled_idx)
+            num_unlabelled = len(agent.unlabelled_idx[sentence_idx])
+            prop = num_labelled / (num_labelled + num_unlabelled)
+            f.write(str(prop))
+            i += 1
+            if i % 10 == 0:
+                f.write("\n")
+                i = 0
+            else:
+                f.write("\t")
+
+    # with open(
+    #         os.path.join(round_dir, f"sentence_labels-{round}"), "wt", encoding="utf-8"
+    # ) as f:
+    #     f.write("This file shows sentences used in training for this round.\n")
+    #     f.write("For each sentence, first row represents the words in the sentence.\n")
+    #     f.write(
+    #         "\tUPPERCASE are words labelled by the annotator, lowercase are the words automatically labelled by the model.\n")
+    #     f.write("The second row is the ground truth labels.\n")
+    #     f.write("The third row is the labels used by the model in training.\n")
+    #     f.write("\n")
+    #     f.write(
+    #         "For full sentence labelling all words will be uppercase. For oracles the second and third row will be the same for uppercase words\n")
+    #     f.write("\n")
+    #
+    #     for batch_indices in agent.labelled_batch_indices:
+    #
+    #         sentences, _, used_targets, _, _ = agent.get_batch(
+    #             batch_indices, agent.autolabelled_data, device
+    #         )
+    #         _, _, real_targets, _, _ = get_batch(
+    #             batch_indices, train_data, device
+    #         )
+    #
+    #         for j, batch_idx in enumerate(batch_indices):
+    #             labelled_idx = agent.labelled_idx[batch_idx]
+    #             f.write("\n")
+    #             f.write(f"Sentence {batch_idx}\n")
+    #             f.write(
+    #                 "\t".join([
+    #                     vocab[int(v)].upper() if k in labelled_idx else vocab[int(v)].upper() for k, v in
+    #                     enumerate(sentences[j])
+    #                 ])
+    #             )
+    #             f.write("\n")
+    #             f.write(
+    #                 "\t".join([
+    #                     tag_set[int(v)] for v in real_targets[j]
+    #                 ])
+    #             )
+    #             f.write("\n")
+    #             f.write(
+    #                 "\t".join([
+    #                     tag_set[int(v)] for v in used_targets[j]
+    #                 ])
+    #             )
+    #             f.write("\n")
+
+    print(f"Finished logging round {round}")
+
 
 
 if __name__ == "__main__":
@@ -331,48 +494,7 @@ if __name__ == "__main__":
 
     while agent.budget > 0:
 
-        best_val_loss = None
-        lr = args.lr
-        all_val_loss = []
-        all_precision = []
-        all_recall = []
-        all_f1 = []
-
-        start_time = time.time()
-        print("-" * 118)
-
-        word_inds = [v for k, v in agent.labelled_idx.items() if v]
-        num_sentences = len(word_inds)
-        num_words = sum([len(b) for b in word_inds])
-
-        print(
-            f"Starting training with {num_words} words labelled in {num_sentences} sentences"
-        )
-        for epoch in range(1, args.epochs + 1):
-
-            if early_stopping(all_f1, args.earlystopping):
-                break
-
-            train(model=model, al_agent=agent)
-
-            val_loss, precision, recall, f1 = evaluate(model, val_data_groups)
-
-            elapsed = time.time() - start_time
-            print(
-                "| End of Epoch {:2d} | Elapsed Time {:s} | Validation Loss {:5.3f} | Precision {:5.3f} "
-                "| Recall {:5.3f} | F1 {:5.3f} |".format(
-                    epoch, time_display(elapsed), val_loss, precision, recall, f1
-                )
-            )
-
-            # Anneal the learning rate if no improvement has been seen in the validation dataset.
-            lr = lr / 4.0
-            for param_group in optimizer.param_groups:
-                param_group["lr"] = lr
-            all_val_loss.append(val_loss)
-            all_precision.append(precision)
-            all_recall.append(recall)
-            all_f1.append(f1)
+        num_words, num_sentences, all_val_loss, all_precision, all_recall, all_f1 = train_full(model)
 
         # Run on test data
         test_loss, precision, recall, f1 = evaluate(model, test_data_groups)
@@ -383,103 +505,7 @@ if __name__ == "__main__":
         )
         print("=" * 118)
 
-        round_dir = os.path.join(root_dir, f"round-{round}")
-        os.mkdir(round_dir)
-        print(f"Logging round {round}")
-
-        with open(
-                os.path.join(round_dir, f"record.tsv"), "wt", encoding="utf-8"
-        ) as f:
-            f.write(
-                f"{num_words} words in {num_sentences} sentences. Total {len(train_data)} sentences.\n\n"
-            )
-            f.write("Epoch\tLOSS\tPREC\tRECL\tF1\n")
-            for idx in range(len(all_val_loss)):
-                f.write(
-                    "{:d}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
-                        idx + 1,
-                        all_val_loss[idx],
-                        all_precision[idx],
-                        all_recall[idx],
-                        all_f1[idx],
-                    )
-                )
-            f.write(
-                "\n{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
-                    test_loss, precision, recall, f1
-                )
-            )
-
-        with open(
-                os.path.join(round_dir, f"sentence_prop-{round}.tsv"), "wt", encoding="utf-8"
-        ) as f:
-
-            f.write("Proportions of sentences in words that have been manually labelled \n")
-            f.write("The remainder of the words in the sentence have been automatically labelled by")
-            f.write("the model before training, as per the threshold argument (if implemented) \n")
-            f.write("\n")
-
-            i = 0
-            for sentence_idx, labelled_idx in agent.labelled_idx.items():
-                num_labelled = len(labelled_idx)
-                num_unlabelled = len(agent.unlabelled_idx[sentence_idx])
-                prop = num_labelled / (num_labelled + num_unlabelled)
-                f.write(str(prop))
-                i += 1
-                if i % 10 == 0:
-                    f.write("\n")
-                    i = 0
-                else:
-                    f.write("\t")
-
-        with open(
-                os.path.join(round_dir, f"sentence_labels-{round}"), "wt", encoding="utf-8"
-        ) as f:
-            f.write("This file shows sentences used in training for this round.\n")
-            f.write("For each sentence, first row represents the words in the sentence.\n")
-            f.write(
-                "\tUPPERCASE are words labelled by the annotator, lowercase are the words automatically labelled by the model.\n")
-            f.write("The second row is the ground truth labels.\n")
-            f.write("The third row is the labels used by the model in training.\n")
-            f.write("\n")
-            f.write(
-                "For full sentence labelling all words will be uppercase. For oracles the second and third row will be the same for uppercase words\n")
-            f.write("\n")
-
-            for batch_indices in agent.labelled_batch_indices:
-
-                sentences, _, used_targets, _ = get_batch(
-                    batch_indices, agent.autolabelled_data, device
-                )
-                _, _, real_targets, _ = get_batch(
-                    batch_indices, train_data, device
-                )
-
-                for j, batch_idx in enumerate(batch_indices):
-                    labelled_idx = agent.labelled_idx[batch_idx]
-                    f.write("\n")
-                    f.write(f"Sentence {batch_idx}\n")
-                    f.write(
-                        "\t".join([
-                            vocab[int(v)].upper() if k in labelled_idx else vocab[int(v)].upper() for k, v in
-                            enumerate(sentences[j])
-                        ])
-                    )
-                    f.write("\n")
-                    f.write(
-                        "\t".join([
-                            tag_set[int(v)] for v in real_targets[j]
-                        ])
-                    )
-                    f.write("\n")
-                    f.write(
-                        "\t".join([
-                            tag_set[int(v)] for v in used_targets[j]
-                        ])
-                    )
-                    f.write("\n")
-
-        print(f"Finished logging round {round}")
+        log_round(root_dir, num_words, num_sentences, agent)
 
         model.eval()
         agent.update_indices(model)

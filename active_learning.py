@@ -1,73 +1,37 @@
-import argparse
-from utils import *
-from training_utils import *
-from torch.utils.data.dataset import *
-from torch.utils.data.sampler import *
-from torch.nn.utils.rnn import *
-import bisect
-from model import *
-import torch
-import os
-import torch.nn as nn
-import torch.optim as optim
-import numpy as np
-import time
-from tqdm import tqdm
-import copy
 import logging
 import random
 
-def configure_al_agent(args, device, model, train_data, test_data):
+from tqdm import tqdm
 
+from training_utils import *
+
+
+def configure_al_agent(args, device, model, train_data, test_data):
     num_sentences_init = int(len(train_data) * args.initprop)
     round_size = int(args.roundsize)
 
     if args.window != -1:
-        selector = WordWindowSelector
+        selector = WordWindowSelector(window_size=args.window)
     else:
-        selector = FullSentenceSelector
+        selector = FullSentenceSelector()
 
     if args.acquisition == 'rand':
-        acquisition_class = RandomBaselineAcquisition
+        acquisition_class = RandomBaselineAcquisition()
     elif args.acquisition == 'lc':
-        acquisition_class = LowestConfidenceAcquisition
+        acquisition_class = LowestConfidenceAcquisition()
     elif args.acquisition == 'maxent':
-        acquisition_class = MaximumEntropyAcquisition
+        acquisition_class = MaximumEntropyAcquisition()
     elif args.acquisition == 'bald':
-        acquisition_class = BALDAcquisition
+        acquisition_class = BALDAcquisition()
     else:
         raise ValueError(args.acquisition)
-
-
-    class AgentClass(ActiveLearningDataset, selector, acquisition_class):
-
-        def __init__(
-            self,
-            train_data,
-            test_data,
-            num_sentences_init,
-            round_size,
-            batch_size,
-            model,
-            device,
-        ):
-            ActiveLearningDataset.__init__(
-                self,
-                train_data=train_data,
-                test_data=test_data,
-                num_sentences_init=num_sentences_init,
-                round_size=round_size,
-                batch_size=args.batch_size,
-                model=model,
-                device=device
-            )
-            selector.__init__(self)
-            acquisition_class.__init__(self)
 
     agent = AgentClass(
         train_data=train_data,
         test_data=test_data,
         num_sentences_init=num_sentences_init,
+        acquisition_class=acquisition_class,
+        selector_class=selector,
         round_size=round_size,
         batch_size=args.batch_size,
         model=model,
@@ -77,18 +41,20 @@ def configure_al_agent(args, device, model, train_data, test_data):
     return agent
 
 
-class ActiveLearningDataset(object):
+class ActiveLearningDataset:
+
     def __init__(
-        self,
-        train_data,
-        test_data,
-        batch_size,
-        round_size,
-        num_sentences_init,
-        model,
-        drop_last=False,
-        device="cuda",
-        **kwargs
+            self,
+            train_data,
+            test_data,
+            batch_size,
+            round_size,
+            num_sentences_init,
+            acquisition_class,
+            selector_class,
+            model,
+            device,
+            drop_last=False,
     ):
         """
         train_data: loaded from pickle
@@ -114,9 +80,6 @@ class ActiveLearningDataset(object):
         self.train_data = train_data
         self.test_data = test_data
 
-        # Exact copy for now. Will only change instances pointed to by self.labelled_batch_idx
-        self.autolabelled_data = copy.deepcopy(self.train_data)
-
         # Short term storage of labels used for filling in sentence blanks
         self.st_labels = {j: [] for j in range(len(self.train_data))}
 
@@ -126,13 +89,14 @@ class ActiveLearningDataset(object):
             j: set(range(len(train_data[j][0]))) for j in range(len(self.train_data))
         }
 
+        self.acquisition = acquisition_class
+        self.selector = selector_class
+
         self.device = device
         print("Starting random init")
         self.random_init(num_sentences=num_sentences_init)
         self.update_datasets(model)
         print("Finished random init")
-
-
 
     def random_init(self, num_sentences):
         """
@@ -160,7 +124,7 @@ class ActiveLearningDataset(object):
     @staticmethod
     def purify_entries(entries):
         """Sort and remove disjoint entries of form [([list, of, word, idx], score), ...]"""
-        start_entries = sorted(entries, key = lambda x: x[-1])
+        start_entries = sorted(entries, key=lambda x: x[-1])
         final_entries = []
         highest_idx = set()
         for entry in start_entries:
@@ -190,17 +154,13 @@ class ActiveLearningDataset(object):
         temp_score_list = [
             (-1, [], -np.inf) for _ in range(self.round_size)
         ]  # (sentence_idx, [list, of, word, idx], score) to be added to self.labelled_idx at the end
-        scores_from_temp_list = lambda x=temp_score_list: [
-            a[-1] for a in x
-        ]  # Get list of scores
 
-        j = 0
         print("\nExtending indices")
         for sentence_idx, scores_list in tqdm(sentence_scores.items()):
             # Skip if entirely Nones
-            if all([type(j) == type(None) for j in scores_list]):
+            if all([type(i) == type(None) for i in scores_list]):
                 continue
-            entries = self.score_extraction(scores_list)
+            entries = self.selector.score_extraction(scores_list)
             entries = self.purify_entries(entries)
             # entries = [([list, of, word, idx], score), ...] that can be compared to temp_score_list
             for entry in entries:
@@ -210,14 +170,7 @@ class ActiveLearningDataset(object):
                 else:
                     pass
 
-        # Not entirely sure why we have to do this
-        temp_score_list = list(
-            filter(
-                lambda x: x[0] >= 0,
-                temp_score_list
-            )
-        )
-
+        j = 0
         for sentence_idx, word_inds, score in temp_score_list:
             self.budget -= len(word_inds)
             if self.budget < 0:
@@ -242,11 +195,10 @@ class ActiveLearningDataset(object):
 
         print("\nUpdating indices")
         for batch_index in tqdm(self.unlabelled_batch_indices):
-
-            sentences, tokens, targets, lengths = get_batch(batch_index, self.train_data, self.device)
-            word_scores, st_preds = self.word_scoring_func(sentences, tokens, model)
+            # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter for functionality
+            sentences, tokens, targets, lengths, kl_mask = get_batch(batch_index, self.train_data, self.device)
+            word_scores = self.acquisition.word_scoring_func(sentences, tokens, model)
             b = batch_index[0]
-            self.st_labels[b] = st_preds
             sentence_scores[b] = [
                 float(word_scores[j]) if j in self.unlabelled_idx[b] else None
                 for j in range(len(word_scores))
@@ -254,40 +206,24 @@ class ActiveLearningDataset(object):
 
         self.extend_indices(sentence_scores)
 
-    def autolabel_sentence(self, model, i):
-
-        # This would not be needed for full sentence labelling!
-        sentences, tokens, targets, lengths = get_batch(
-            [i], self.autolabelled_data, self.device
-        )
-        st_preds = self.st_labels[i]
-
-        for j in range(len(st_preds)):
-            if j in self.labelled_idx[i]:
-                self.autolabelled_data[i][2][j] = self.train_data[i][-1][j]
-            else:
-                self.autolabelled_data[i][2][j] = st_preds[j]
-
-    def autolabel_dataset(self, model):
-
-        # TODO: We might want to change the threshold number labels needed to include sentence
-        # Right now it is just one (i.e. not empty)
+    def make_labelled_dataset(self, model):
 
         # We keep the same indexing so that we can use the same indices as with train_data
         # We edit the ones that have labels, which appear in partially_labelled_sentence_idx
 
         partially_labelled_sentence_idx = set()
-        print("\nAutolabelling data")
-        
-        for i in tqdm(range(len(self.autolabelled_data))):
+        print("\nCreating partially labelled dataset")
+
+        # TODO: We might want to change the threshold number labels needed to include sentence
+        # Right now it is just one (i.e. not empty)
+        for i in tqdm(range(len(self.train_data))):
             if not self.labelled_idx[i]:
                 continue
             else:
                 partially_labelled_sentence_idx = partially_labelled_sentence_idx.union({i})
-                self.autolabel_sentence(model, i)
 
         labelled_subset = Subset(
-            self.autolabelled_data, list(partially_labelled_sentence_idx)
+            self.train_data, list(partially_labelled_sentence_idx)
         )
         self.labelled_batch_indices = list(
             BatchSampler(
@@ -299,18 +235,9 @@ class ActiveLearningDataset(object):
 
     def make_unlabelled_dataset(self):
 
-        unlabelled_sentence_idx = [
-            j for j in self.unlabelled_idx.keys() if self.unlabelled_idx[j]
+        self.unlabelled_batch_indices = unlabelled_sentence_idx = [
+            [j] for j in self.unlabelled_idx.keys() if self.unlabelled_idx[j]
         ]
-        unlabelled_subset = Subset(self.train_data, unlabelled_sentence_idx)
-
-        self.unlabelled_batch_indices = list(
-            BatchSampler(
-                SequentialSampler(unlabelled_subset.indices),
-                1,
-                drop_last=self.drop_last,
-            )
-        )
 
     def update_datasets(self, model):
         """
@@ -318,11 +245,11 @@ class ActiveLearningDataset(object):
         new dataset objects for labelled and unlabelled instances
         """
 
-        self.autolabel_dataset(model)
+        self.make_labelled_dataset(model)
         self.make_unlabelled_dataset()
 
     def __iter__(self):
-        # DONT FORGET: DO get_batch USING OWN self.autolabelled_data NOT FULL THING
+        # DONT FORGET: DO self.selector.get_batch on self.train_data
         return (
             self.labelled_batch_indices[i]
             for i in torch.randperm(len(self.labelled_batch_indices))
@@ -330,6 +257,34 @@ class ActiveLearningDataset(object):
 
     def __len__(self):
         return len(self.labelled_batch_indices)
+
+
+class AgentClass(ActiveLearningDataset):
+
+    def __init__(
+            self,
+            train_data,
+            test_data,
+            num_sentences_init,
+            acquisition_class,
+            selector_class,
+            round_size,
+            batch_size,
+            model,
+            device,
+    ):
+        ActiveLearningDataset.__init__(
+            self,
+            train_data=train_data,
+            test_data=test_data,
+            num_sentences_init=num_sentences_init,
+            acquisition_class=acquisition_class,
+            selector_class=selector_class,
+            round_size=round_size,
+            batch_size=batch_size,
+            model=model,
+            device=device
+        )
 
 
 class FullSentenceSelector(object):
@@ -340,7 +295,7 @@ class FullSentenceSelector(object):
     def score_aggregation(self, scores_list):
         # Just take the per-word normalised score list.
         # This is the average score of each word for the whole sentence
-        sentence_score = sum(scores_list)/len(scores_list)
+        sentence_score = sum(scores_list) / len(scores_list)
         return sentence_score
 
     def score_extraction(self, scores_list):
@@ -356,6 +311,28 @@ class FullSentenceSelector(object):
         indices = list(range(len(scores_list)))
         return [(indices, score)]
 
+    def get_batch(self, batch_indices, al_agent, model):
+        """
+        No model predictions required!
+        KL mask is all zeros, since everything in the sentence is labelled, therefore one hot encoded
+        """
+
+        padded_sentences, padded_tokens, padded_tags, lengths, kl_mask = get_batch(batch_indices, al_agent.train_data,
+                                                                                   al_agent.device)
+        kl_mask = torch.zeros(padded_tags.shape[:2]).to(al_agent.device)
+
+        padded_sentences = padded_sentences.to(al_agent.device)
+        padded_tokens = padded_tokens.to(al_agent.device)
+        model_log_probs = model(padded_sentences, padded_tokens)
+
+        return (
+            padded_sentences,
+            padded_tokens,
+            padded_tags,
+            lengths,
+            kl_mask
+        )
+
 
 class WordWindowSelector(object):
 
@@ -365,17 +342,16 @@ class WordWindowSelector(object):
     def score_aggregation(self, scores_list):
         # Just take the per-word normalised score list.
         # This is the average score of each word for the whole sentence
-        sentence_score = sum(scores_list)/len(scores_list)
+        sentence_score = sum(scores_list) / len(scores_list)
         return sentence_score
 
     def score_extraction(self, scores_list):
         """
         Input:
             scores_list: [list, of, scores, from, a, sentence, None, None]
-            None REPRESENTS PREVIOUSLY LABELLED WORD - WHICH WILL NOT APPEAR FOR THIS STRATEGY
+            None REPRESENTS PREVIOUSLY LABELLED WORD
         Output:
             entries = [([list, of, word, idx], score), ...] for all possible extraction batches
-            For this strategy, entries is one element, with all the indices of this sentence
         """
         indices_and_word_scores = [
             (
@@ -385,12 +361,67 @@ class WordWindowSelector(object):
         ]
         out_list = []
         for lt in indices_and_word_scores:
-            if any(l == None for l in lt[0]):
+            if any(l == None for l in lt[1]):
                 continue
             score = self.score_aggregation(lt[1])
             out_list.append((lt[0], score))
 
         return out_list
+
+    def get_batch(self, batch_indices, al_agent, model):
+        """
+        Same as the original get batch, except targets are now given with a dimension of size num_tags in there.
+        If the word is used in training and appears in self.labelled_idx, this is just one hot encoding
+        else, it is the probability distribution that the most latest model has predicted
+        """
+
+        batch = [al_agent.train_data[idx] for idx in batch_indices]
+        sorted_batch = sorted(batch, key=lambda x: len(x[0]), reverse=True)
+        sentences, tokens, tags = zip(*sorted_batch)
+
+        padded_sentences, lengths = pad_packed_sequence(
+            pack_sequence([torch.LongTensor(_) for _ in sentences]),
+            batch_first=True,
+            padding_value=vocab["<pad>"],
+        )
+        padded_tokens, _ = pad_packed_sequence(
+            pack_sequence([torch.LongTensor(_) for _ in tokens]),
+            batch_first=True,
+            padding_value=charset["<pad>"],
+        )
+        padded_tags, _ = pad_packed_sequence(
+            pack_sequence([torch.LongTensor(_) for _ in tags]),
+            batch_first=True,
+            padding_value=tag_set["O"],
+        )
+
+        padded_sentences = padded_sentences.to(al_agent.device)
+        padded_tokens = padded_tokens.to(al_agent.device)
+        model_log_probs = model(padded_sentences, padded_tokens)
+
+        padded_tags = nn.functional.one_hot(padded_tags, num_classes=193).float()  # MAKE NUM CLASSES A PARAMETER?
+        kl_mask = torch.zeros(padded_tags.shape[:2]).to(al_agent.device)
+
+        # Fill in the words that have not been queried
+        for sentence_idx, sentence_tags in enumerate(padded_tags):
+            sentence_index = batch_indices[sentence_idx]
+            for word_idx in range(int(lengths[sentence_idx])):
+                if word_idx in al_agent.labelled_idx[sentence_index]:  # Labelled
+                    pass
+                elif word_idx in al_agent.unlabelled_idx[sentence_index]:  # Not labelled
+                    padded_tags[sentence_idx, word_idx] = \
+                        torch.exp(model_log_probs[sentence_idx, word_idx])
+                    kl_mask[sentence_idx, word_idx] = 1
+                else:  # Padding
+                    continue
+
+        return (
+            padded_sentences,
+            padded_tokens,
+            padded_tags.to(al_agent.device),
+            lengths.to(al_agent.device),
+            kl_mask
+        )
 
 
 class RandomBaselineAcquisition(object):
@@ -400,9 +431,9 @@ class RandomBaselineAcquisition(object):
 
     def word_scoring_func(self, sentences, tokens, model):
         # Preds can be random here since we are using full sentences
-        scores, preds = tuple([random.random() for _ in range(sentences.shape[-1])] for _ in range(2))
+        scores, _ = tuple([random.random() for _ in range(sentences.shape[-1])] for _ in range(2))
 
-        return scores, preds
+        return scores
 
 
 class LowestConfidenceAcquisition(object):
@@ -414,12 +445,9 @@ class LowestConfidenceAcquisition(object):
         model_output = model(
             sentences, tokens
         ).detach().cpu()  # Log probabilities of shape [batch_size (1), length_of_sentence, num_tags (193)]
-        scores, preds = model_output[0].max(dim=1)
+        scores = -(model_output[0].max(dim=1)[0].cpu().numpy().reshape(-1)).tolist()
         # Take most likely sequence but then minus it - i.e. low probs score highly
-        return (
-            (-scores.cpu().numpy().reshape(-1)).tolist(),
-            preds.cpu().numpy().reshape(-1).tolist()
-        )
+        return scores
 
 
 class MaximumEntropyAcquisition(object):
@@ -431,12 +459,8 @@ class MaximumEntropyAcquisition(object):
         model_output = model(
             sentences, tokens
         ).detach().cpu()  # Log probabilities of shape [batch_size (1), length_of_sentence, num_tags (193)]
-        _, preds = model_output[0].max(dim=1)
-        preds = preds.cpu().numpy().reshape(-1).tolist()
-        entropies = torch.sum(-model_output*np.exp(model_output)[0], dim = -1).cpu().numpy().reshape(-1).tolist()
-
-        # Take most likely sequence but then minus it - i.e. low probs score highly
-        return (entropies, preds)
+        entropies = torch.sum(-model_output * np.exp(model_output)[0], dim=-1).cpu().numpy().reshape(-1).tolist()
+        return entropies
 
 
 class BALDAcquisition(object):
@@ -447,24 +471,19 @@ class BALDAcquisition(object):
         super().__init__()
 
     def word_scoring_func(self, sentences, tokens, model):
-        # Preds can be random here since we are using full sentences
-        original_model_output = model(sentences, tokens).detach().cpu()
-        _, preds = original_model_output[0].max(dim=1)
-        preds = preds.cpu().numpy().reshape(-1).tolist()
-
         # Do the M forward passes:
         model.char_encoder.drop.train()
         model.word_encoder.drop.train()
         model.drop.train()
 
-        dropout_model_preds = [model(sentences, tokens).detach().cpu()[0].max(dim=1)[1].numpy() for _ in range(self.M)] # list of self.M tensors of size (seq_len)
-        dropout_model_preds = np.dstack(dropout_model_preds)[0] # Of size (seq_len, self.M)
-        majority_vote = np.array([np.argmax(np.bincount(dropout_model_preds[:,i])) for i in range(self.M)])
+        dropout_model_preds = [model(sentences, tokens).detach().cpu()[0].max(dim=1)[1].numpy() for _ in
+                               range(self.M)]  # list of self.M tensors of size (seq_len)
+        dropout_model_preds = np.dstack(dropout_model_preds)[0]  # Of size (seq_len, self.M)
+        majority_vote = np.array([np.argmax(np.bincount(dropout_model_preds[:, i])) for i in range(self.M)])
         scores = 1 - np.array(
             [sum(dropout_model_preds[j] == majority_vote[j]) for j in range(dropout_model_preds.shape[0])]
         ) / self.M
 
         model.eval()
 
-        return scores, preds
-
+        return scores

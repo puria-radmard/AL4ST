@@ -1,0 +1,430 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="BranchesTreeState">
+    <expand>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="LOCAL_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="REMOTE_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="REMOTE_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="GROUP_NODE:origin" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+    </expand>
+    <select>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="REMOTE_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="GROUP_NODE:origin" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+    </select>
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="6091c5b4-2dea-4115-a3b0-3d512debaca2" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/active_learning.py" beforeDir="false" afterPath="$PROJECT_DIR$/active_learning.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/al_train.py" beforeDir="false" afterPath="$PROJECT_DIR$/al_train.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/training_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/training_utils.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CoverageDataManager">
+    <SUITE FILE_PATH="coverage/JEER_master$2.coverage" NAME="2 Coverage Results" MODIFIED="1533878153163" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/somethingnotthis" />
+    <SUITE FILE_PATH="coverage/JEER_master$transpose.coverage" NAME="transpose Coverage Results" MODIFIED="1533956419340" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/somethingnotthis" />
+    <SUITE FILE_PATH="coverage/JEER_master$data.coverage" NAME="data Coverage Results" MODIFIED="1533904917869" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/JEER_master$a.coverage" NAME="a Coverage Results" MODIFIED="1534076331796" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/JEER_master$conv_net.coverage" NAME="conv_net Coverage Results" MODIFIED="1533948066210" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/JEER_master$word2vec.coverage" NAME="word2vec Coverage Results" MODIFIED="1533864855740" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/JEER_master$test.coverage" NAME="test Coverage Results" MODIFIED="1533986058416" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/somethingnotthis" />
+    <SUITE FILE_PATH="coverage/JEER_master$model.coverage" NAME="model Coverage Results" MODIFIED="1534057516253" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/JEER_master$3.coverage" NAME="3 Coverage Results" MODIFIED="1533947552664" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/somethingnotthis" />
+    <SUITE FILE_PATH="coverage/JEER_master$1.coverage" NAME="1 Coverage Results" MODIFIED="1533966315135" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/somethingnotthis" />
+    <SUITE FILE_PATH="coverage/JEER_master$train.coverage" NAME="train Coverage Results" MODIFIED="1533978068525" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="FlaskConsoleOptions" custom-start-script="import sys&#10;sys.path.extend([WORKING_DIR_AND_PYTHON_PATHS])&#10;from flask.cli import ScriptInfo&#10;locals().update(ScriptInfo(create_app=None).load_app().make_shell_context())&#10;print(&quot;Python %s on %s\nApp: %s [%s]\nInstance: %s&quot; % (sys.version, sys.platform, app.import_name, app.env, app.instance_path))">
+    <envs>
+      <env key="FLASK_APP" value="app" />
+    </envs>
+    <option name="myCustomStartScript" value="import sys&#10;sys.path.extend([WORKING_DIR_AND_PYTHON_PATHS])&#10;from flask.cli import ScriptInfo&#10;locals().update(ScriptInfo(create_app=None).load_app().make_shell_context())&#10;print(&quot;Python %s on %s\nApp: %s [%s]\nInstance: %s&quot; % (sys.version, sys.platform, app.import_name, app.env, app.instance_path))" />
+    <option name="myEnvs">
+      <map>
+        <entry key="FLASK_APP" value="app" />
+      </map>
+    </option>
+  </component>
+  <component name="Git.Pull.Settings">
+    <option name="BRANCH" value="main" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="JsFlowSettings">
+    <service-enabled>true</service-enabled>
+    <exe-path />
+    <other-services-enabled>true</other-services-enabled>
+    <auto-save>true</auto-save>
+  </component>
+  <component name="JupyterTrust" id="e6f26700-7392-44e2-afba-ebbb11c41497" />
+  <component name="ProjectId" id="1jFUNAnNyk8sT1Zl467Qtwo2nPP" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="WebServerToolWindowPanel.toolwindow.highlight.mappings" value="true" />
+    <property name="WebServerToolWindowPanel.toolwindow.highlight.symlinks" value="true" />
+    <property name="WebServerToolWindowPanel.toolwindow.show.date" value="false" />
+    <property name="WebServerToolWindowPanel.toolwindow.show.permissions" value="false" />
+    <property name="WebServerToolWindowPanel.toolwindow.show.size" value="false" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="node.js.detected.package.eslint" value="true" />
+    <property name="node.js.detected.package.tslint" value="true" />
+    <property name="node.js.path.for.package.eslint" value="project" />
+    <property name="node.js.path.for.package.tslint" value="project" />
+    <property name="node.js.selected.package.eslint" value="(autodetect)" />
+    <property name="node.js.selected.package.tslint" value="(autodetect)" />
+    <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
+    <property name="nodejs_npm_path_reset_for_default_project" value="true" />
+    <property name="nodejs_package_manager_path" value="npm" />
+    <property name="settings.editor.selected.configurable" value="preferences.keymap" />
+  </component>
+  <component name="PyConsoleOptionsProvider">
+    <option name="myPythonConsoleState">
+      <console-settings module-name="JEER-master" sdk-home="sftp://amax@10.15.82.241:22/home/amax/anaconda3/envs/p4/bin/python" working-directory="$PROJECT_DIR$">
+        <option name="mySdkHome" value="sftp://amax@10.15.82.241:22/home/amax/anaconda3/envs/p4/bin/python" />
+        <option name="myModuleName" value="JEER-master" />
+        <option name="myWorkingDirectory" value="$PROJECT_DIR$" />
+      </console-settings>
+    </option>
+  </component>
+  <component name="RunManager" selected="Python.al_train">
+    <configuration default="true" type="PythonConfigurationType" factoryName="Python">
+      <module name="JEER-master" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="true" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="a" type="PythonConfigurationType" factoryName="Python" temporary="true">
+      <module name="JEER-master" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/a.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="al_train" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="AL4ST" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="sftp://radmard@zeus:22/home/radmard/anaconda3/envs/baseline/bin/python3" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/al_train.py" />
+      <option name="PARAMETERS" value="-W -1 -A rand -I 0.1 -R 2475 --cuda" />
+      <option name="SHOW_COMMAND_LINE" value="true" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="asdf" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="JEER-master" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/asdf.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="true" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="model" type="PythonConfigurationType" factoryName="Python" temporary="true">
+      <module name="JEER-master" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="sftp://amax@10.15.82.241:22/home/amax/anaconda3/envs/tf/bin/python" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/model.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="test" type="PythonConfigurationType" factoryName="Python" temporary="true">
+      <module name="JEER-master" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/somethingnotthis" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/somethingnotthis/test.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Python.model" />
+      <item itemvalue="Python.test" />
+      <item itemvalue="Python.a" />
+      <item itemvalue="Python.al_train" />
+      <item itemvalue="Python.asdf" />
+    </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.al_train" />
+        <item itemvalue="Python.asdf" />
+        <item itemvalue="Python.model" />
+        <item itemvalue="Python.a" />
+        <item itemvalue="Python.test" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="SvnConfiguration">
+    <configuration />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="6091c5b4-2dea-4115-a3b0-3d512debaca2" name="Default Changelist" comment="" />
+      <created>1533816295763</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1533816295763</updated>
+      <workItem from="1603399295620" duration="3251000" />
+      <workItem from="1603402848553" duration="259000" />
+      <workItem from="1603403138085" duration="4666000" />
+      <workItem from="1603478946458" duration="15039000" />
+      <workItem from="1603525292207" duration="3869000" />
+      <workItem from="1603545223243" duration="26000" />
+      <workItem from="1603642171700" duration="5403000" />
+      <workItem from="1603710502541" duration="2822000" />
+      <workItem from="1603713760176" duration="10749000" />
+      <workItem from="1603823423547" duration="2162000" />
+      <workItem from="1604072744429" duration="8730000" />
+      <workItem from="1604083713817" duration="7504000" />
+      <workItem from="1604153844562" duration="9807000" />
+      <workItem from="1604309939092" duration="30973000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="oldMeFiltersMigrated" value="true" />
+  </component>
+  <component name="WindowStateProjectService">
+    <state x="591" y="1270" width="800" height="684" key="#Deployment" timestamp="1603403618284">
+      <screen x="0" y="1055" width="1920" height="1080" />
+    </state>
+    <state x="591" y="1270" width="800" height="684" key="#Deployment/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603403618284" />
+    <state x="575" y="1259" width="832" height="711" key="#SSH_Configurations" timestamp="1603400089936">
+      <screen x="0" y="1055" width="1920" height="1080" />
+    </state>
+    <state x="575" y="1259" width="832" height="711" key="#SSH_Configurations/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603400089936" />
+    <state x="509" y="233" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1604344674806">
+      <screen x="72" y="27" width="1848" height="1053" />
+    </state>
+    <state x="454" y="1266" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603400413917" />
+    <state x="509" y="233" key="#com.intellij.execution.impl.EditConfigurationsDialog/72.27.1848.1053@72.27.1848.1053" timestamp="1604344674806" />
+    <state x="834" y="283" width="424" height="591" key="#com.intellij.ide.macro.MacrosDialog" timestamp="1604157352060">
+      <screen x="72" y="27" width="1848" height="1053" />
+    </state>
+    <state x="834" y="283" width="424" height="591" key="#com.intellij.ide.macro.MacrosDialog/72.27.1848.1053@72.27.1848.1053" timestamp="1604157352060" />
+    <state x="2763" y="276" width="444" height="535" key="#xdebugger.XInspectDialog" timestamp="1604363216670">
+      <screen x="1920" y="0" width="1920" height="2135" />
+    </state>
+    <state x="2763" y="276" width="444" height="535" key="#xdebugger.XInspectDialog/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604363216670" />
+    <state x="265" y="1055" width="1129" height="1080" key="#xdebugger.evaluate" timestamp="1604363486417">
+      <screen x="1920" y="0" width="1920" height="2135" />
+    </state>
+    <state x="754" y="569" width="1086" height="676" key="#xdebugger.evaluate/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603496996912" />
+    <state x="265" y="1055" width="1129" height="1080" key="#xdebugger.evaluate/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604363486417" />
+    <state x="1050" y="377" key="#xdebugger.evaluate/72.27.1848.1053@72.27.1848.1053" timestamp="1604344807420" />
+    <state x="769" y="1375" width="424" height="491" key="FileChooserDialogImpl" timestamp="1603402388218">
+      <screen x="0" y="1055" width="1920" height="1080" />
+    </state>
+    <state x="769" y="1375" width="424" height="491" key="FileChooserDialogImpl/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603402388218" />
+    <state width="1874" height="446" key="GridCell.Tab.0.bottom" timestamp="1604357010539">
+      <screen x="1920" y="0" width="1920" height="2135" />
+    </state>
+    <state width="1802" height="378" key="GridCell.Tab.0.bottom/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603497741347" />
+    <state width="1874" height="446" key="GridCell.Tab.0.bottom/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604357010539" />
+    <state width="1802" height="261" key="GridCell.Tab.0.bottom/72.27.1848.1053@72.27.1848.1053" timestamp="1604344813191" />
+    <state width="1874" height="446" key="GridCell.Tab.0.center" timestamp="1604357010539">
+      <screen x="1920" y="0" width="1920" height="2135" />
+    </state>
+    <state width="1802" height="378" key="GridCell.Tab.0.center/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603497741347" />
+    <state width="1874" height="446" key="GridCell.Tab.0.center/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604357010539" />
+    <state width="1802" height="261" key="GridCell.Tab.0.center/72.27.1848.1053@72.27.1848.1053" timestamp="1604344813191" />
+    <state width="1874" height="446" key="GridCell.Tab.0.left" timestamp="1604357010539">
+      <screen x="1920" y="0" width="1920" height="2135" />
+    </state>
+    <state width="1802" height="378" key="GridCell.Tab.0.left/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603497741347" />
+    <state width="1874" height="446" key="GridCell.Tab.0.left/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604357010539" />
+    <state width="1802" height="261" key="GridCell.Tab.0.left/72.27.1848.1053@72.27.1848.1053" timestamp="1604344813190" />
+    <state width="1874" height="446" key="GridCell.Tab.0.right" timestamp="1604357010539">
+      <screen x="1920" y="0" width="1920" height="2135" />
+    </state>
+    <state width="1802" height="378" key="GridCell.Tab.0.right/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603497741347" />
+    <state width="1874" height="446" key="GridCell.Tab.0.right/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604357010539" />
+    <state width="1802" height="261" key="GridCell.Tab.0.right/72.27.1848.1053@72.27.1848.1053" timestamp="1604344813191" />
+    <state width="1802" height="446" key="GridCell.Tab.1.bottom" timestamp="1604361438600">
+      <screen x="72" y="27" width="1848" height="1053" />
+    </state>
+    <state width="1802" height="378" key="GridCell.Tab.1.bottom/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603497741348" />
+    <state width="1874" height="446" key="GridCell.Tab.1.bottom/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604357010454" />
+    <state width="1802" height="446" key="GridCell.Tab.1.bottom/72.27.1848.1053@72.27.1848.1053" timestamp="1604361438600" />
+    <state width="1802" height="446" key="GridCell.Tab.1.center" timestamp="1604361438600">
+      <screen x="72" y="27" width="1848" height="1053" />
+    </state>
+    <state width="1802" height="378" key="GridCell.Tab.1.center/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603497741347" />
+    <state width="1874" height="446" key="GridCell.Tab.1.center/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604357010452" />
+    <state width="1802" height="446" key="GridCell.Tab.1.center/72.27.1848.1053@72.27.1848.1053" timestamp="1604361438600" />
+    <state width="1802" height="446" key="GridCell.Tab.1.left" timestamp="1604361438599">
+      <screen x="72" y="27" width="1848" height="1053" />
+    </state>
+    <state width="1802" height="378" key="GridCell.Tab.1.left/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603497741347" />
+    <state width="1874" height="446" key="GridCell.Tab.1.left/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604357010452" />
+    <state width="1802" height="446" key="GridCell.Tab.1.left/72.27.1848.1053@72.27.1848.1053" timestamp="1604361438599" />
+    <state width="1802" height="446" key="GridCell.Tab.1.right" timestamp="1604361438600">
+      <screen x="72" y="27" width="1848" height="1053" />
+    </state>
+    <state width="1802" height="378" key="GridCell.Tab.1.right/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603497741348" />
+    <state width="1874" height="446" key="GridCell.Tab.1.right/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604357010453" />
+    <state width="1802" height="446" key="GridCell.Tab.1.right/72.27.1848.1053@72.27.1848.1053" timestamp="1604361438600" />
+    <state x="485" y="1243" width="1022" height="737" key="SettingsEditor" timestamp="1603403045113">
+      <screen x="0" y="1055" width="1920" height="1080" />
+    </state>
+    <state x="485" y="1243" width="1022" height="737" key="SettingsEditor/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603403045113" />
+    <state x="172" y="1182" width="1648" height="853" key="com.intellij.history.integration.ui.views.FileHistoryDialog" timestamp="1603482129957">
+      <screen x="0" y="1055" width="1920" height="1080" />
+    </state>
+    <state x="172" y="1182" width="1648" height="853" key="com.intellij.history.integration.ui.views.FileHistoryDialog/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603482129957" />
+    <state x="2479" y="0" width="792" height="1080" key="com.intellij.openapi.editor.actions.MultiplePasteAction$ClipboardContentChooser" timestamp="1604362307156">
+      <screen x="1920" y="0" width="1920" height="2135" />
+    </state>
+    <state x="630" y="300" width="722" height="780" key="com.intellij.openapi.editor.actions.MultiplePasteAction$ClipboardContentChooser/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603497063414" />
+    <state x="2479" y="0" width="792" height="1080" key="com.intellij.openapi.editor.actions.MultiplePasteAction$ClipboardContentChooser/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604362307156" />
+    <state x="610" y="203" width="762" height="707" key="com.intellij.openapi.editor.actions.MultiplePasteAction$ClipboardContentChooser/72.27.1848.1053@72.27.1848.1053" timestamp="1604157385856" />
+    <state x="2661" y="455" width="438" height="177" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1604356969446">
+      <screen x="1920" y="0" width="1920" height="2135" />
+    </state>
+    <state x="2661" y="455" width="438" height="177" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2/1920.0.1920.2135@1920.0.1920.2135" timestamp="1604356969446" />
+    <state x="892" y="1325" width="566" height="580" key="ftp.server.browser" timestamp="1603402463615">
+      <screen x="0" y="1055" width="1920" height="1080" />
+    </state>
+    <state x="892" y="1325" width="566" height="580" key="ftp.server.browser/0.1055.1920.1080/1920.0.1920.1080@0.1055.1920.1080" timestamp="1603402463615" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <default-breakpoints>
+        <breakpoint type="python-exception">
+          <properties notifyOnTerminate="true" exception="BaseException">
+            <option name="notifyOnTerminate" value="true" />
+          </properties>
+        </breakpoint>
+      </default-breakpoints>
+    </breakpoint-manager>
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/AL4ST$al_train_py__W___1___A_rand__I_0_1__R_2475___cuda.coverage" NAME="al_train Coverage Results" MODIFIED="1604157992666" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/AL4ST$al_train.coverage" NAME="al_train Coverage Results" MODIFIED="1604357010325" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+  </component>
+</project>

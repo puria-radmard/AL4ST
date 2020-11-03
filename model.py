@@ -126,6 +126,7 @@ class Model(nn.Module):
         num_tag,
         dropout,
         emb_dropout,
+        T
     ):
         super(Model, self).__init__()
         self.char_encoder = CharEncoder(
@@ -156,6 +157,7 @@ class Model(nn.Module):
             NUM_LAYERS=1,
         )
         self.init_weights()
+        self.T = T
 
     def forward(self, word_input, char_input):
         batch_size = word_input.size(0)
@@ -166,7 +168,7 @@ class Model(nn.Module):
         word_output = self.word_encoder(word_input, char_output)
         y = self.decoder(word_output)
 
-        return F.log_softmax(y, dim=2)
+        return F.log_softmax(y/self.T, dim=2)
 
     def init_weights(self):
         pass

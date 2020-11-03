@@ -28,6 +28,30 @@ val_size = int(0.01 * len(train_data))
 train_data, val_data = random_split(train_data, [len(train_data) - val_size, val_size])
 
 
+class ModifiedKL(nn.Module):
+
+    def __init__(self, weight):
+        """
+        KL mask not used at the moment as we bypassed the log in KL, so o.h.e vectors can be used for it
+        Reverse KL is not supported here
+        TODO: Looking into weighting labelled and non labelled loss?
+        """
+
+        super().__init__()
+
+        # weights of size [1, 1, classes]
+        self.weight = weight.reshape(1, 1, -1)
+
+    def forward(self, pred_log_probs, target_probs, kl_mask = None):
+
+        # loss of size [batch, length, classes]
+        loss = - pred_log_probs * target_probs
+        loss *= self.weight
+
+        # loss of size [batch, length]
+        return loss.sum()
+
+
 def group(data, breakpoints):
     groups = [[] for _ in range(len(breakpoints) + 1)]
     for idx, item in enumerate(data):
@@ -80,11 +104,15 @@ def get_batch(batch_indices, data, device):
         padding_value=tag_set["O"],
     )
 
+    padded_tags = nn.functional.one_hot(padded_tags, num_classes=193).float()  # MAKE NUM CLASSES A PARAMETER?
+    kl_mask = torch.zeros(padded_tags.shape[:2]).to(device)
+
     return (
         padded_sentences.to(device),
         padded_tokens.to(device),
         padded_tags.to(device),
         lengths.to(device),
+        kl_mask
     )
 
 
