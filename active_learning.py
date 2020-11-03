@@ -170,6 +170,9 @@ class ActiveLearningDataset:
                 else:
                     pass
 
+        # Dead budget filter
+        temp_score_list = [a for a in temp_score_list if a[0] != -1]
+
         j = 0
         for sentence_idx, word_inds, score in temp_score_list:
             self.budget -= len(word_inds)
