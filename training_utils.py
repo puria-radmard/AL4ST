@@ -21,8 +21,8 @@ tag_set.load(f"{root_dir}data/NYT_CoType/tag2id.txt")
 relation_labels = Index()
 relation_labels.load(f"{root_dir}data/NYT_CoType/relation_labels.txt")
 
-train_data = load(f"{root_dir}data/NYT_CoType/train.pk")[:50000]
-test_data = load(f"{root_dir}data/NYT_CoType/test.pk")[:5000]
+train_data = load(f"{root_dir}data/NYT_CoType/train.pk")
+test_data = load(f"{root_dir}data/NYT_CoType/test.pk")
 # CHANGED FOR DEBUG
 val_size = int(0.01 * len(train_data))
 train_data, val_data = random_split(train_data, [len(train_data) - val_size, val_size])
@@ -85,21 +85,20 @@ class GroupBatchRandomSampler(object):
 
 def get_batch(batch_indices, data, device):
     batch = [data[idx] for idx in batch_indices]
-    sorted_batch = sorted(batch, key=lambda x: len(x[0]), reverse=True)
-    sentences, tokens, tags = zip(*sorted_batch)
+    sentences, tokens, tags = zip(*batch)
 
     padded_sentences, lengths = pad_packed_sequence(
-        pack_sequence([torch.LongTensor(_) for _ in sentences]),
+        pack_sequence([torch.LongTensor(_) for _ in sentences], enforce_sorted=False),
         batch_first=True,
         padding_value=vocab["<pad>"],
     )
     padded_tokens, _ = pad_packed_sequence(
-        pack_sequence([torch.LongTensor(_) for _ in tokens]),
+        pack_sequence([torch.LongTensor(_) for _ in tokens], enforce_sorted=False),
         batch_first=True,
         padding_value=charset["<pad>"],
     )
     padded_tags, _ = pad_packed_sequence(
-        pack_sequence([torch.LongTensor(_) for _ in tags]),
+        pack_sequence([torch.LongTensor(_) for _ in tags], enforce_sorted=False),
         batch_first=True,
         padding_value=tag_set["O"],
     )

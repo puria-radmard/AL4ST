@@ -176,12 +176,14 @@ class Model(nn.Module):
         # nn.init.kaiming_uniform_(self.decoder.weight.data, mode='fan_in', nonlinearity='relu')
 
 
-word_embeddings = torch.tensor(np.load("data/NYT_CoType/word2vec.vectors.npy"))
-print(word_embeddings.shape)
-dropout = (0.5,)
-emb_dropout = 0.25
 
 if __name__ == "__main__":
+
+    word_embeddings = torch.tensor(np.load("data/NYT_CoType/word2vec.vectors.npy"))
+    print(word_embeddings.shape)
+    dropout = (0.5,)
+    emb_dropout = 0.25
+
     model = Model(
         charset_size=96,
         char_embedding_size=50,

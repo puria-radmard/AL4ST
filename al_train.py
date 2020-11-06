@@ -141,8 +141,9 @@ char_channels = [args.emsize] + [args.char_nhid] * args.char_layers
 
 
 def make_root_dir(args):
+
     rn = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
-    root_dir = os.path.join(dir_path, f"record-{rn}")
+    root_dir = os.path.join(dir_path, f"record-{args.acquisition}-{rn}")
     os.mkdir(root_dir)
 
     with open(os.path.join(root_dir, "config.txt"), "w") as config_file:
@@ -345,7 +346,7 @@ def train_full(model):
     )
     for epoch in range(1, args.epochs + 1):
 
-        if early_stopping(all_f1, 1):  # args.earlystopping):
+        if early_stopping(all_f1, args.earlystopping):
             break
 
         train_epoch(model, agent, start_time, epoch)
@@ -369,7 +370,6 @@ def train_full(model):
         all_recall.append(recall)
         all_f1.append(f1)
 
-        break
 
     return (
         num_words,

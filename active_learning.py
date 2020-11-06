@@ -1,8 +1,7 @@
 import logging
 import random
-
+from queue import PriorityQueue
 from tqdm import tqdm
-
 from training_utils import *
 
 
@@ -26,7 +25,7 @@ def configure_al_agent(args, device, model, train_data, test_data):
     else:
         raise ValueError(args.acquisition)
 
-    agent = AgentClass(
+    agent = ActiveLearningDataset(
         train_data=train_data,
         test_data=test_data,
         num_sentences_init=num_sentences_init,
@@ -79,20 +78,14 @@ class ActiveLearningDataset:
 
         self.train_data = train_data
         self.test_data = test_data
-
-        # Short term storage of labels used for filling in sentence blanks
-        self.st_labels = {j: [] for j in range(len(self.train_data))}
+        self.acquisition = acquisition_class
+        self.selector = selector_class
+        self.device = device
 
         # Dictionaries mapping {sentence idx: [list, of, word, idx]} for labelled and unlabelled words
         self.labelled_idx = {j: set() for j in range(len(self.train_data))}
-        self.unlabelled_idx = {
-            j: set(range(len(train_data[j][0]))) for j in range(len(self.train_data))
-        }
+        self.unlabelled_idx = {j: set(range(len(train_data[j][0]))) for j in range(len(self.train_data))}
 
-        self.acquisition = acquisition_class
-        self.selector = selector_class
-
-        self.device = device
         print("Starting random init")
         self.random_init(num_sentences=num_sentences_init)
         self.update_datasets(model)
@@ -103,10 +96,10 @@ class ActiveLearningDataset:
         Randomly initialise self.labelled_idx dictionary
         """
         num_words_labelled = 0
-        thres = num_sentences / len(self.train_data)
-        randomly_selected_indices = [
-            i for i in range(len(self.train_data)) if random.random() < thres
-        ]
+        randomly_selected_indices = random.sample(
+            list(self.unlabelled_idx.keys()), num_sentences
+        )
+
         for j in randomly_selected_indices:
             l = len(self.train_data[j][0])
             self.labelled_idx[j] = set(range(l))
@@ -124,7 +117,7 @@ class ActiveLearningDataset:
     @staticmethod
     def purify_entries(entries):
         """Sort and remove disjoint entries of form [([list, of, word, idx], score), ...]"""
-        start_entries = sorted(entries, key=lambda x: x[-1])
+        start_entries = sorted(entries, key=lambda x: x[-1], reverse=True)
         final_entries = []
         highest_idx = set()
         for entry in start_entries:
@@ -161,14 +154,11 @@ class ActiveLearningDataset:
             if all([type(i) == type(None) for i in scores_list]):
                 continue
             entries = self.selector.score_extraction(scores_list)
-            entries = self.purify_entries(entries)
-            # entries = [([list, of, word, idx], score), ...] that can be compared to temp_score_list
+            entries = self.purify_entries(entries)   # entries = [([list, of, word, idx], score), ...] that can be compared to temp_score_list
             for entry in entries:
                 if entry[-1] > temp_score_list[0][-1]:
                     temp_score_list[0] = (sentence_idx, entry[0], entry[1])
                     temp_score_list.sort(key=lambda y: y[-1])
-                else:
-                    pass
 
         # Dead budget filter
         temp_score_list = [a for a in temp_score_list if a[0] != -1]
@@ -185,8 +175,9 @@ class ActiveLearningDataset:
                 self.unlabelled_idx[sentence_idx].remove(w)
 
         print(f"Added {j} words to index mapping")
+        return temp_score_list
 
-    def update_indices(self, model):
+    def get_all_scores(self, model):
         """
         Score unlabelled instances in terms of their suitability to be labelled next.
         Add the highest scoring instance indices in the dataset to self.labelled_idx
@@ -199,17 +190,25 @@ class ActiveLearningDataset:
         print("\nUpdating indices")
         for batch_index in tqdm(self.unlabelled_batch_indices):
             # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter for functionality
-            sentences, tokens, targets, lengths, kl_mask = get_batch(batch_index, self.train_data, self.device)
-            word_scores = self.acquisition.word_scoring_func(sentences, tokens, model)
-            b = batch_index[0]
-            sentence_scores[b] = [
-                float(word_scores[j]) if j in self.unlabelled_idx[b] else None
-                for j in range(len(word_scores))
-            ]  # scores of unlabelled words --> float, scores of labelled words --> None
+            sentences, tokens, _, lengths, kl_mask = get_batch(batch_index, self.train_data, self.device)
+            word_scores = self.acquisition.word_scoring_func(sentences, tokens, model, lengths)
+            for i, b in enumerate(batch_index):
+                sentence_scores[b] = [
+                    float(word_scores[i][j]) if j in self.unlabelled_idx[b] else None
+                    for j in range(lengths[i])
+                ]  # scores of unlabelled words --> float, scores of labelled words --> None
 
-        self.extend_indices(sentence_scores)
+        return sentence_scores
 
-    def make_labelled_dataset(self, model):
+    def update_indices(self, model):
+
+        sentence_scores = self.get_all_scores(model)
+        temp_score_list = self.extend_indices(sentence_scores)
+
+        return sentence_scores, temp_score_list
+
+
+    def make_labelled_dataset(self):
 
         # We keep the same indexing so that we can use the same indices as with train_data
         # We edit the ones that have labels, which appear in partially_labelled_sentence_idx
@@ -220,9 +219,7 @@ class ActiveLearningDataset:
         # TODO: We might want to change the threshold number labels needed to include sentence
         # Right now it is just one (i.e. not empty)
         for i in tqdm(range(len(self.train_data))):
-            if not self.labelled_idx[i]:
-                continue
-            else:
+            if self.labelled_idx[i]:
                 partially_labelled_sentence_idx = partially_labelled_sentence_idx.union({i})
 
         labelled_subset = Subset(
@@ -238,9 +235,23 @@ class ActiveLearningDataset:
 
     def make_unlabelled_dataset(self):
 
-        self.unlabelled_batch_indices = unlabelled_sentence_idx = [
-            [j] for j in self.unlabelled_idx.keys() if self.unlabelled_idx[j]
-        ]
+        partially_unlabelled_sentence_idx = set()
+        print("\nCreating partially unlabelled dataset")
+
+        for i in tqdm(range(len(self.train_data))):
+            if self.unlabelled_idx[i]:
+                partially_unlabelled_sentence_idx = partially_unlabelled_sentence_idx.union({i})
+
+        labelled_subset = Subset(
+            self.train_data, list(partially_unlabelled_sentence_idx)
+        )
+        self.unlabelled_batch_indices = list(
+            BatchSampler(
+                SubsetRandomSampler(labelled_subset.indices),
+                self.batch_size,
+                drop_last=False,
+            )
+        )
 
     def update_datasets(self, model):
         """
@@ -248,7 +259,7 @@ class ActiveLearningDataset:
         new dataset objects for labelled and unlabelled instances
         """
 
-        self.make_labelled_dataset(model)
+        self.make_labelled_dataset()
         self.make_unlabelled_dataset()
 
     def __iter__(self):
@@ -260,34 +271,6 @@ class ActiveLearningDataset:
 
     def __len__(self):
         return len(self.labelled_batch_indices)
-
-
-class AgentClass(ActiveLearningDataset):
-
-    def __init__(
-            self,
-            train_data,
-            test_data,
-            num_sentences_init,
-            acquisition_class,
-            selector_class,
-            round_size,
-            batch_size,
-            model,
-            device,
-    ):
-        ActiveLearningDataset.__init__(
-            self,
-            train_data=train_data,
-            test_data=test_data,
-            num_sentences_init=num_sentences_init,
-            acquisition_class=acquisition_class,
-            selector_class=selector_class,
-            round_size=round_size,
-            batch_size=batch_size,
-            model=model,
-            device=device
-        )
 
 
 class FullSentenceSelector(object):
@@ -379,21 +362,20 @@ class WordWindowSelector(object):
         """
 
         batch = [al_agent.train_data[idx] for idx in batch_indices]
-        sorted_batch = sorted(batch, key=lambda x: len(x[0]), reverse=True)
-        sentences, tokens, tags = zip(*sorted_batch)
+        sentences, tokens, tags = zip(*batch)
 
         padded_sentences, lengths = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in sentences]),
+            pack_sequence([torch.LongTensor(_) for _ in sentences], enforce_sorted=False),
             batch_first=True,
             padding_value=vocab["<pad>"],
         )
         padded_tokens, _ = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in tokens]),
+            pack_sequence([torch.LongTensor(_) for _ in tokens], enforce_sorted=False),
             batch_first=True,
             padding_value=charset["<pad>"],
         )
         padded_tags, _ = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in tags]),
+            pack_sequence([torch.LongTensor(_) for _ in tags], enforce_sorted=False),
             batch_first=True,
             padding_value=tag_set["O"],
         )
@@ -432,9 +414,9 @@ class RandomBaselineAcquisition(object):
     def __init__(self, **kwargs):
         super().__init__()
 
-    def word_scoring_func(self, sentences, tokens, model):
+    def word_scoring_func(self, sentences, tokens, model, lengths):
         # Preds can be random here since we are using full sentences
-        scores, _ = tuple([random.random() for _ in range(sentences.shape[-1])] for _ in range(2))
+        scores = [[random.random() for _ in range(length)] for length in lengths]
 
         return scores
 
@@ -444,12 +426,12 @@ class LowestConfidenceAcquisition(object):
     def __init__(self, **kwargs):
         super().__init__()
 
-    def word_scoring_func(self, sentences, tokens, model):
-        model_output = model(
-            sentences, tokens
-        ).detach().cpu()  # Log probabilities of shape [batch_size (1), length_of_sentence, num_tags (193)]
-        scores = (-model_output[0].max(dim=1)[0].cpu().numpy().reshape(-1)).tolist()
-        # Take most likely sequence but then minus it - i.e. low probs score highly
+    def word_scoring_func(self, sentences, tokens, model, lengths):
+
+        model_output = model(sentences, tokens).detach().cpu()  # Log probabilities of shape [batch_size, max_length_of_sentence, num_tags (193)]
+        log_probs = -model_output.max(dim=-1).values            # Negative highest probs of shape [batch_size, max_length_of_sentence]
+        scores = [log_probs[i, :length].reshape(-1).tolist() for i, length in enumerate(lengths)]        # List of list of scores
+
         return scores
 
 
@@ -458,15 +440,19 @@ class MaximumEntropyAcquisition(object):
     def __init__(self, **kwargs):
         super().__init__()
 
-    def word_scoring_func(self, sentences, tokens, model):
-        model_output = model(
-            sentences, tokens
-        ).detach().cpu()  # Log probabilities of shape [batch_size (1), length_of_sentence, num_tags (193)]
-        entropies = torch.sum(-model_output * np.exp(model_output)[0], dim=-1).cpu().numpy().reshape(-1).tolist()
-        return entropies
+    def word_scoring_func(self, sentences, tokens, model, lengths):
+
+        model_output = model(sentences, tokens).detach().cpu()  # Log probabilities of shape [batch_size (1), max_length_of_sentence, num_tags (193)]
+        entropies = torch.sum(-model_output * np.exp(model_output), dim=-1).cpu().numpy()   # Entropies of shape [batch_size, max_length_of_sentence]
+        scores = [entropies[i, :length].reshape(-1).tolist() for i, length in enumerate(lengths)]
+
+        return scores
 
 
 class BALDAcquisition(object):
+    """
+        SUSPENDED FOR NOW
+    """
 
     def __init__(self, **kwargs):
         # We might want to set a range of ps and change them using model.*.p = p[i] during the M runs
@@ -481,7 +467,7 @@ class BALDAcquisition(object):
 
         dropout_model_preds = [model(sentences, tokens).detach().cpu()[0].max(dim=1)[1].numpy() for _ in
                                range(self.M)]  # list of self.M tensors of size (seq_len)
-        dropout_model_preds = np.dstack(dropout_model_preds)[0]  # Of size (seq_len, self.M)
+        dropout_model_preds = np.dstack(dropout_model_preds)[0]  # Of size (seq_len, self.M)                                # Test scores here
         majority_vote = np.array([np.argmax(np.bincount(dropout_model_preds[:, i])) for i in range(self.M)])
         scores = 1 - np.array(
             [sum(dropout_model_preds[j] == majority_vote[j]) for j in range(dropout_model_preds.shape[0])]
