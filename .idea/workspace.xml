@@ -26,14 +26,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="6091c5b4-2dea-4115-a3b0-3d512debaca2" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/test/test_active_learning.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/unit_test_utils.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/active_learning.py" beforeDir="false" afterPath="$PROJECT_DIR$/active_learning.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/al_train.py" beforeDir="false" afterPath="$PROJECT_DIR$/al_train.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/model.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/training_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/training_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -83,7 +76,7 @@
     <other-services-enabled>true</other-services-enabled>
     <auto-save>true</auto-save>
   </component>
-  <component name="JupyterTrust" id="fa4a1fe8-042b-4d18-9cc6-8000f6ed95f4" />
+  <component name="JupyterTrust" id="3d57c227-0ed8-4fcd-aea9-2cddce33e446" />
   <component name="ProjectId" id="1jFUNAnNyk8sT1Zl467Qtwo2nPP" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
@@ -305,7 +298,8 @@
       <workItem from="1604451490478" duration="372000" />
       <workItem from="1604485845751" duration="328000" />
       <workItem from="1604487153501" duration="4344000" />
-      <workItem from="1604496460023" duration="14373000" />
+      <workItem from="1604496460023" duration="15075000" />
+      <workItem from="1604843630758" duration="58000" />
     </task>
     <servers />
   </component>
