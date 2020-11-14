@@ -1,3 +1,4 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:7da0b2d152cee98014edcb63011988031204730685d2b2e08dd40322a062f88c
-size 45
+gensim==3.8.3
+torch==1.0.0
+numpy==1.14.5
+tqdm
