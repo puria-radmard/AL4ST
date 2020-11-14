@@ -294,7 +294,9 @@ def evaluate(model, data_sampler, dataset):
 
 
 def train_full(model, agent, val_set):
+
     lr = args.lr
+    earlystopper = EarlyStopper(patience=args.early_stopping, maximise=False)
 
     all_val_loss = []
     all_val_precision = []
@@ -315,7 +317,13 @@ def train_full(model, agent, val_set):
     print(f"Starting training with {num_words} words labelled in {num_sentences} sentences")
     for epoch in range(1, args.epochs + 1):
 
-        if early_stopping(all_val_f1, args.earlystopping):
+        state_dict_and_epoch = earlystopper.assess_model(model, all_val_loss, epoch)
+
+        if state_dict_and_epoch:
+            state_dict, best_epoch = state_dict_and_epoch[0], state_dict_and_epoch[1]
+            print(
+                f"Reloading from epoch {epoch} to epoch {best_epoch}, and skipping to next round (acquiring more data).")
+            model.load_state_dict(state_dict)
             break
 
         train_epoch(model, agent, start_time, epoch)

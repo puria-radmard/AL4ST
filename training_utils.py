@@ -4,6 +4,46 @@ from torch.utils.data.dataset import *
 from torch.utils.data.sampler import *
 
 
+class EarlyStopper:
+
+    def __init__(self, patience: int, maximise: bool):
+        """
+        An early stopping & callback class.
+        patience is an integer, the number of epochs that a non-optimal statistic is allowed (adding number of steps soon)
+        maximise is set to True for scores, False for losses
+        """
+
+        self.patience = patience
+        self.maximise = maximise
+        self.model_state_dict = None
+        self.model_state_dict_epoch = 0
+
+    def assess_model(self, model, stats_list, epoch):
+        """
+        Returns:
+            False if not stopping
+            model_state_dict if stopping
+        """
+        if self.maximise:
+            stats_list = [-a for a in stats_list] # Now we always minimise
+        if len(stats_list) == 0:
+            return False
+        if self.check_stop(stats_list):
+            return self.model_state_dict, self.model_state_dict_epoch
+        if np.argmin(stats_list) == len(stats_list) - 1:
+            self.model_state_dict = model.state_dict()
+            self.model_state_dict_epoch = epoch
+
+    def check_stop(self, stats_list):
+
+        if self.patience < 0 or len(stats_list) < self.patience:
+            return False
+        if len(stats_list) - np.argmin(stats_list) > self.patience:
+            return True
+        else:
+            return False
+
+
 class ModifiedKL(nn.Module):
 
     def __init__(self, weight):
@@ -86,3 +126,5 @@ def get_triplets(tags):
                     triplets.append((e1, relation_label, e2))
                     del role2[idx]
     return triplets
+
+
