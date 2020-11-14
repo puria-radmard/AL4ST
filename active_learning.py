@@ -5,6 +5,20 @@ from tqdm import tqdm
 from training_utils import *
 
 
+class EarlyStopper(object):
+
+    def __init__(self, patience: int, maximise: bool):
+        """
+        An early stopping & callback class.
+        patience is an integer, the number of epochs that a non-optimal statistic is allowed (adding number of steps soon)
+        maximise is set to True for scores, False for losses
+        """
+
+        self.patience = patience
+        self.maximise = maximise
+
+
+
 def configure_al_agent(args, device, model, train_data, test_data):
     num_sentences_init = int(len(train_data) * args.initprop)
     round_size = int(args.roundsize)
@@ -14,7 +28,10 @@ def configure_al_agent(args, device, model, train_data, test_data):
     else:
         selector = FullSentenceSelector()
 
-    if args.acquisition == 'rand':
+    if args.acquisition == 'baseline' and args.initprop != 1.0:
+        raise ValueError("To run baseline, you must set initprop == 1.0")
+
+    if args.acquisition == 'rand' or args.acquisition == 'baseline':
         acquisition_class = RandomBaselineAcquisition()
     elif args.acquisition == 'lc':
         acquisition_class = LowestConfidenceAcquisition()
@@ -144,24 +161,20 @@ class ActiveLearningDataset:
             }
             meaning words 5, 6, 7 of word j are chosen to be labelled.
         """
-        temp_score_list = [
-            (-1, [], -np.inf) for _ in range(self.round_size)
-        ]  # (sentence_idx, [list, of, word, idx], score) to be added to self.labelled_idx at the end
+
+        temp_score_list = []
 
         print("\nExtending indices")
         for sentence_idx, scores_list in tqdm(sentence_scores.items()):
-            # Skip if entirely Nones
+            # Skip if already all Nones
             if all([type(i) == type(None) for i in scores_list]):
                 continue
             entries = self.selector.score_extraction(scores_list)
             entries = self.purify_entries(entries)   # entries = [([list, of, word, idx], score), ...] that can be compared to temp_score_list
-            for entry in entries:
-                if entry[-1] > temp_score_list[0][-1]:
-                    temp_score_list[0] = (sentence_idx, entry[0], entry[1])
-                    temp_score_list.sort(key=lambda y: y[-1])
+            temp_score_list.extend([(sentence_idx, entry[0], entry[1]) for entry in entries])
 
-        # Dead budget filter
-        temp_score_list = [a for a in temp_score_list if a[0] != -1]
+        temp_score_list.sort(key = lambda e: e[-1], reverse = True)
+        temp_score_list = temp_score_list[:self.round_size]
 
         j = 0
         for sentence_idx, word_inds, score in temp_score_list:

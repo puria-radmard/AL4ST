@@ -3,7 +3,7 @@ import datetime
 
 from tqdm import tqdm
 
-from active_learning import configure_al_agent
+from active_learning import configure_al_agent, EarlyStopper
 from training_utils import *
 from utils import *
 
@@ -31,7 +31,7 @@ parser.add_argument(
     "--earlystopping", type=int, help="number of epochs of F1 decrease before early stopping", default=3
 )
 parser.add_argument(
-    "--temperature", type=float, help="Temperature of predictionannealing ", default=1.0
+    "--temperature", type=float, help="Temperature of prediction annealing ", default=1.0
 )
 # parser.add_argument(
 #     "--labelthres", type=float, help="proportion of sentence that must be manually labelled before it is used for training", required = True
@@ -110,7 +110,10 @@ parser.add_argument(
     help="report interval (default: 100)",
 )
 parser.add_argument(
-    "--lr", type=float, default=4, help="initial learning rate (default: 4)"
+    "--lr", type=float, default=0.02, help="initial learning rate (default: 4)"
+)
+parser.add_argument(
+    "--lr_decrease", type=float, default=2, help="learning rate annealing factor on non-improving epochs (default: 2)"
 )
 parser.add_argument(
     "--optim", type=str, default="SGD", help="optimizer type (default: SGD)"
@@ -205,6 +208,8 @@ def early_stopping_original(f1_list, num):
 
 
 def early_stopping(f1_list, num=3):
+    if num < 0:
+        return False
     if len(f1_list) < num:
         return False
     elif len(f1_list) - np.argmax(f1_list) > num:
@@ -289,9 +294,8 @@ def train_epoch(model, al_agent, start_time, epoch):
             total_loss = 0
             count = 0
 
-
 # NOT CHANGED BY AL
-def evaluate(model, data_groups):
+def evaluate(model, data_sampler, dataset):
     model.eval()
     total_loss = 0
     count = 0
@@ -300,11 +304,9 @@ def evaluate(model, data_groups):
     TP_FN = 0
     with torch.no_grad():
         print("Beginning evaluation")
-        for batch_indices in tqdm(
-                GroupBatchRandomSampler(data_groups, args.batch_size, drop_last=False)
-        ):
+        for batch_indices in data_sampler:
             sentences, tokens, targets, lengths, kl_mask = get_batch(
-                batch_indices, val_data, device
+                batch_indices, dataset, device
             )
 
             output = model(sentences, tokens)
@@ -326,13 +328,19 @@ def evaluate(model, data_groups):
     return total_loss / count, TP / TP_FP, TP / TP_FN, 2 * TP / (TP_FP + TP_FN)
 
 
-def train_full(model):
+def train_full(model, agent):
 
     lr = args.lr
+
     all_val_loss = []
-    all_precision = []
-    all_recall = []
-    all_f1 = []
+    all_val_precision = []
+    all_val_recall = []
+    all_val_f1 = []
+
+    all_train_loss = []
+    all_train_precision = []
+    all_train_recall = []
+    all_train_f1 = []
 
     start_time = time.time()
     print("-" * 118)
@@ -346,42 +354,59 @@ def train_full(model):
     )
     for epoch in range(1, args.epochs + 1):
 
-        if early_stopping(all_f1, args.earlystopping):
+        if early_stopping(all_val_f1, args.earlystopping):
             break
 
         train_epoch(model, agent, start_time, epoch)
 
-        val_loss, precision, recall, f1 = evaluate(model, val_data_groups)
+        val_loss, val_precision, val_recall, val_f1 = evaluate(
+            model, GroupBatchRandomSampler(val_data_groups, args.batch_size, drop_last=False), val_data
+        )
+        train_loss, train_precision, train_recall, train_f1 = evaluate(model, agent.labelled_batch_indices, agent.train_data)
 
         elapsed = time.time() - start_time
         print(
             "| End of Epoch {:2d} | Elapsed Time {:s} | Validation Loss {:5.3f} | Precision {:5.3f} "
             "| Recall {:5.3f} | F1 {:5.3f} |".format(
-                epoch, time_display(elapsed), val_loss, precision, recall, f1
+                epoch, time_display(elapsed), val_loss, val_precision, val_recall, val_f1
             )
         )
 
         # Anneal the learning rate if no improvement has been seen in the validation dataset.
-        lr = lr / 4.0
+        if  len(all_val_loss) and val_loss > max(all_val_loss):
+            lr = lr / args.lr_decrease
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
+
         all_val_loss.append(val_loss)
-        all_precision.append(precision)
-        all_recall.append(recall)
-        all_f1.append(f1)
+        all_val_precision.append(val_precision)
+        all_val_recall.append(val_recall)
+        all_val_f1.append(val_f1)
+
+        all_train_loss.append(train_loss)
+        all_train_precision.append(train_precision)
+        all_train_recall.append(train_recall)
+        all_train_f1.append(train_f1)
 
 
-    return (
-        num_words,
-        num_sentences,
-        all_val_loss,
-        all_precision,
-        all_recall,
-        all_f1
-    )
+    return {
+        "num_words": num_words,
+        "num_sentences": num_sentences,
+        "all_val_loss": all_val_loss,
+        "all_val_precision": all_val_precision,
+        "all_val_recall":all_val_recall,
+        "all_val_f1": all_val_f1,
+        "all_train_loss": all_train_loss,
+        "all_train_precision": all_train_precision,
+        "all_train_recall": all_train_recall,
+        "all_train_f1": all_train_f1,
+    }
 
 
-def log_round(root_dir, num_words, num_sentences, agent):
+def log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1):
+
+    num_words = round_results["num_words"]
+    num_sentences = round_results["num_sentences"]
 
     round_dir = os.path.join(root_dir, f"round-{round}")
     os.mkdir(round_dir)
@@ -390,24 +415,31 @@ def log_round(root_dir, num_words, num_sentences, agent):
     with open(
             os.path.join(round_dir, f"record.tsv"), "wt", encoding="utf-8"
     ) as f:
-        f.write(
-            f"{num_words} words in {num_sentences} sentences. Total {len(train_data)} sentences.\n\n"
-        )
-        f.write("Epoch\tLOSS\tPREC\tRECL\tF1\n")
-        for idx in range(len(all_val_loss)):
+        f.write("Epoch\tT_LOSS\tT_PREC\tT_RECL\tT_F1\tV_LOSS\tV_PREC\tV_RECL\tV_F1\n")
+        for idx in range(len(round_results["all_val_loss"])):
             f.write(
-                "{:d}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
+                "{:d}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
                     idx + 1,
-                    all_val_loss[idx],
-                    all_precision[idx],
-                    all_recall[idx],
-                    all_f1[idx],
+                    round_results["all_train_loss"][idx],
+                    round_results["all_train_precision"][idx],
+                    round_results["all_train_recall"][idx],
+                    round_results["all_train_f1"][idx],
+                    round_results["all_val_loss"][idx],
+                    round_results["all_val_precision"][idx],
+                    round_results["all_val_recall"][idx],
+                    round_results["all_val_f1"][idx],
                 )
             )
         f.write(
-            "\n{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
-                test_loss, precision, recall, f1
+            "\nTEST_LOSS\tTEST_PREC\tTEST_RECALL\tTEST_F1\n"
+        )
+        f.write(
+            "{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
+                test_loss, test_precision, test_recall, test_f1
             )
+        )
+        f.write(
+            f"\n{num_words} words in {num_sentences} sentences. Total {len(train_data)} sentences.\n\n"
         )
 
     with open(
@@ -492,22 +524,28 @@ if __name__ == "__main__":
     root_dir = make_root_dir(args)
     round = 0
 
-    while agent.budget > 0:
+    while True:
 
-        num_words, num_sentences, all_val_loss, all_precision, all_recall, all_f1 = train_full(model)
+        round_results = train_full(model, agent)
 
         # Run on test data
-        test_loss, precision, recall, f1 = evaluate(model, test_data_groups)
+        test_loss, test_precision, test_recall, test_f1 = evaluate(
+            model, GroupBatchRandomSampler(test_data_groups, args.batch_size, drop_last=False), test_data
+        )
         print("=" * 118)
         print(
             "| End of Training | Test Loss {:5.3f} | Precision {:5.3f} "
-            "| Recall {:5.3f} | F1 {:5.3f} |".format(test_loss, precision, recall, f1)
+            "| Recall {:5.3f} | F1 {:5.3f} |".format(test_loss, test_precision, test_recall, test_f1)
         )
         print("=" * 118)
 
-        log_round(root_dir, num_words, num_sentences, agent)
+        log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1)
+
+        if agent.budget <= 0:
+            break
 
         model.eval()
         agent.update_indices(model)
         agent.update_datasets(model)
         round += 1
+
