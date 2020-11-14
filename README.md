@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-version https://git-lfs.github.com/spec/v1
-oid sha256:ffdc768bc29f56731048a432a41eb5e0a4de7859c3ee45e78ee168a29fa59dc5
-size 1103
-=======
 # Joint extraction of entities and relations-pytorch+CNNs+LSTM
 This project is based on [Deep Active Learning for Named Entity Recognition](https://arxiv.org/abs/1707.05928)  
 and [Joint Extraction of Entities and Relations Based on a Novel Tagging Scheme](https://arxiv.org/abs/1706.05075)
@@ -46,4 +41,3 @@ and [Joint Extraction of Entities and Relations Based on a Novel Tagging Scheme]
     i upload data and model to google drive:https://drive.google.com/drive/folders/1WWKkvwtbg5fLmh3CnjPC2luxyHooyvmR?usp=sharing
 
 
->>>>>>> e99de2fd835ca2d65d64fcbe09cf17974d8470a0
