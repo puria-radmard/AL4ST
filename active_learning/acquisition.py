@@ -1,3 +1,65 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:f610ecb58c4b9232d28c55933c59a28e89acf89e208f593ec8ed17afb966b998
-size 2318
+import numpy as np
+
+
+class Acquisition:
+
+    def score(self, sentences, sentence_lens, tokens):
+        pass
+
+
+class RandomBaselineAcquisition(Acquisition):
+
+    def score(self, sentences, sentence_lengths, tokens):
+        return [np.random.sample(length) for length in sentence_lengths]
+
+
+class LowestConfidenceAcquisition(Acquisition):
+
+    def __init__(self, model):
+        self.model = model
+
+    def score(self, sentences, sentence_lengths, tokens):
+        y_hat = self.model(sentences, tokens)  # logits (batch_size x sent_length x num_tags [193])
+        scores = -y_hat.max(dim=-1).values  # negative highest logits (batch_size x sent_length)
+        return [scores[i, :length].reshape(-1) for i, length in enumerate(sentence_lengths)]
+
+
+class MaximumEntropyAcquisition(Acquisition):
+
+    def __init__(self, model):
+        self.model = model
+
+    def score(self, sentences, sentence_lengths, tokens):
+        y_hat = self.model(sentences, tokens)  # logits (batch_size x sent_length x num_tags [193])
+        scores = np.sum(-y_hat * np.exp(y_hat), dim=-1)  # entropies of shape (batch_size x sent_length)
+        return [scores[i, :length].reshape(-1) for i, length in enumerate(sentence_lengths)]
+
+
+class BALDAcquisition(Acquisition):
+    """
+        SUSPENDED FOR NOW
+    """
+
+    def __init__(self, m):
+        # We might want to set a range of ps and change them using model.*.p = p[i] during the M runs
+        self.m = 100
+        super().__init__()
+
+    def score(self, sentences, tokens, model):
+        # Do the M forward passes:
+        model.char_encoder.drop.train()
+        model.word_encoder.drop.train()
+        model.drop.train()
+
+        dropout_model_preds = [model(sentences, tokens).detach().cpu()[0].max(dim=1)[1].numpy() for _ in
+                               range(self.m)]  # list of self.M tensors of size (seq_len)
+        dropout_model_preds = np.dstack(dropout_model_preds)
+        [0]  # Of size (seq_len, self.M)                                # Test scores here
+        majority_vote = np.array([np.argmax(np.bincount(dropout_model_preds[:, i])) for i in range(self.M)])
+        scores = 1 - np.array(
+            [sum(dropout_model_preds[j] == majority_vote[j]) for j in range(dropout_model_preds.shape[0])]
+        ) / self.m
+
+        model.eval()
+
+        return scores
