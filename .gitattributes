@@ -2,6 +2,25 @@
 * text=auto
 . filter=lfs diff=lfs merge=lfs -text
 data filter=lfs diff=lfs merge=lfs -text
+data/data filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/relation_labels.txt filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/tag2id.txt filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/brown filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/entity_labels.txt filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/word2vec.vectors.npy filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/train.pk filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/vocab.txt filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/word2vec.txt filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/corpus.txt filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/download_train_json.py filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/test.json filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/word2vec filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/test.pk filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/test.txt filter=lfs diff=lfs merge=lfs -text
+data/NYT_CoType/train.json filter=lfs diff=lfs merge=lfs -text
+data/*/*/* filter=lfs diff=lfs merge=lfs -text
+data/*/*/ filter=lfs diff=lfs merge=lfs -text
 *.gitignore filter=lfs diff=lfs merge=lfs -text
 *.iml filter=lfs diff=lfs merge=lfs -text
 *.xml filter=lfs diff=lfs merge=lfs -text
