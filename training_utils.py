@@ -1,38 +1,51 @@
+import logging
+
 import numpy as np
 import torch.nn as nn
 from torch.utils.data.dataset import *
 from torch.utils.data.sampler import *
-import bisect
+
 
 class EarlyStopper:
 
-    def __init__(self, patience: int, maximise: bool):
+    def __init__(self, model, patience: int):  # , maximise: bool):
         """
         An early stopping & callback class.
         patience is an integer, the number of epochs that a non-optimal statistic is allowed (adding number of steps soon)
         maximise is set to True for scores, False for losses
         """
-
         self.patience = patience
-        self.maximise = maximise
+        # self.maximise = maximise
         self.model_state_dict = None
         self.model_state_dict_epoch = 0
+        self.model = model
+        self.scores = []
+        self.min_score = float('inf')
 
-    def assess_model(self, model, stats_list, epoch):
-        """
-        Returns:
-            False if not stopping
-            model_state_dict if stopping
-        """
-        if self.maximise:
-            stats_list = [-a for a in stats_list] # Now we always minimise
-        if len(stats_list) == 0:
+    def is_overfitting(self, score):
+        scores = self.scores
+        if len(scores) < self.patience:
             return False
-        if self.check_stop(stats_list):
-            return self.model_state_dict, self.model_state_dict_epoch
-        if np.argmin(stats_list) == len(stats_list) - 1:
-            self.model_state_dict = model.state_dict()
-            self.model_state_dict_epoch = epoch
+
+        if score < self.min_score:
+            self.model_state_dict = self.model.state_dict()
+            self.min_score = 0
+
+        scores.append(score)
+        all_increasing = True
+        s0 = scores[0]
+        for s1 in scores[1:]:
+            if s0 >= s1:
+                all_increasing = False
+                break
+            s0 = s1
+        self.scores = scores[1:]
+
+        if all_increasing:
+            logging.info(f'reloading model')
+            self.model.load_state_dict(self.model_state_dict)
+
+        return all_increasing
 
     def check_stop(self, stats_list):
 
@@ -126,5 +139,3 @@ def get_triplets(tags, tag_set):
                     triplets.append((e1, relation_label, e2))
                     del role2[idx]
     return triplets
-
-

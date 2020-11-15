@@ -190,26 +190,6 @@ def make_root_dir(args):
     return root_dir
 
 
-def early_stopping_original(f1_list, num):
-    if len(f1_list) < num:
-        return False
-    elif sorted(f1_list[-num:], reverse=True) == f1_list[-num:]:
-        return True
-    else:
-        return False
-
-
-def early_stopping(f1_list, num=3):
-    if num < 0:
-        return False
-    if len(f1_list) < num:
-        return False
-    elif len(f1_list) - np.argmax(f1_list) > num:
-        return True
-    else:
-        return False
-
-
 def measure(output, targets, lengths, tag_set):
     assert output.size(0) == targets.size(0) and targets.size(0) == lengths.size(0)
     tp = 0
@@ -325,7 +305,7 @@ def evaluate(model, data_sampler, dataset, helper, tag_set, criterion):
 
 def train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, original_lr, criterion, args):
     lr = args.lr
-    earlystopper = EarlyStopper(patience=args.earlystopping, maximise=False)
+    early_stopper = EarlyStopper(patience=args.earlystopping, model=model)
 
     all_val_loss = []
     all_val_precision = []
@@ -346,16 +326,6 @@ def train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, 
 
     logging.info(f"Starting training with {num_words} words labelled in {num_sentences} sentences")
     for epoch in range(1, args.epochs + 1):
-
-        state_dict_and_epoch = earlystopper.assess_model(model, all_val_loss, epoch)
-
-        if state_dict_and_epoch:
-            state_dict, best_epoch = state_dict_and_epoch[0], state_dict_and_epoch[1]
-            logging.info(
-                f"Reloading from epoch {epoch} to epoch {best_epoch}, "
-                f"and skipping to next round (acquiring more data).")
-            model.load_state_dict(state_dict)
-            break
 
         train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, args)
 
@@ -387,6 +357,10 @@ def train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, 
         all_train_precision.append(train_precision)
         all_train_recall.append(train_recall)
         all_train_f1.append(train_f1)
+
+        if early_stopper.is_overfitting(val_loss):
+            break
+
 
     return {
         "num_words": num_words,

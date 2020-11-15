@@ -124,10 +124,10 @@ class ActiveLearningAgent:
 
         self.budget -= budget_spent
 
-        print(
+        logging.info(
             f"""
-            Total sentences: {len(self.train_set)}  |   Total words: {self.budget + budget_spent}
-            Initialised with {budget_spent} words  |   Remaining word budget: {self.budget}
+            total sentences: {len(self.train_set)}  |   total words: {self.budget + budget_spent}
+            initialised with {budget_spent} words  |   remaining word budget: {self.budget}
             """)
 
     def get_batch(self, i):
