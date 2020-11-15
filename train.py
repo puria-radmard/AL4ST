@@ -269,9 +269,9 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
                     args.epochs * len(sampler)
             )
             remaining = elapsed / percent - elapsed
-            print(
-                "| Epoch {:2d}/{:2d} | Batch {:5d}/{:5d} | Elapsed Time {:s} | Remaining Time {:s} | "
-                "lr {:4.2e} | Loss {:5.3f} |".format(
+            logging.info(
+                "| epoch {:2d}/{:2d} | batch {:5d}/{:5d} | elapsed time {:s} | remaining time {:s} | "
+                "lr {:4.2e} | train_loss {:5.3f} |".format(
                     epoch,
                     args.epochs,
                     idx + 1,
@@ -338,14 +338,13 @@ def train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, 
     all_train_f1 = []
 
     start_time = time.time()
-    print("-" * 118)
 
     num_sentences = agent.index.get_number_partially_labelled_sentences()
     num_words = agent.budget_spent()
 
     optimizer = getattr(optim, args.optim)(model.parameters(), lr=original_lr)
 
-    print(f"Starting training with {num_words} words labelled in {num_sentences} sentences")
+    logging.info(f"Starting training with {num_words} words labelled in {num_sentences} sentences")
     for epoch in range(1, args.epochs + 1):
 
         state_dict_and_epoch = earlystopper.assess_model(model, all_val_loss, epoch)
@@ -409,11 +408,9 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
 
     round_dir = os.path.join(root_dir, f"round-{round_num}")
     os.mkdir(round_dir)
-    print(f"Logging round {round_num}")
+    logging.info(f"logging round {round_num}")
 
-    with open(
-            os.path.join(round_dir, f"record.tsv"), "wt", encoding="utf-8"
-    ) as f:
+    with open(os.path.join(round_dir, f"record.tsv"), "wt", encoding="utf-8") as f:
         f.write("Epoch\tT_LOSS\tT_PREC\tT_RECL\tT_F1\tV_LOSS\tV_PREC\tV_RECL\tV_F1\n")
         for idx in range(len(round_results["all_val_loss"])):
             f.write(
@@ -512,7 +509,7 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
     #             )
     #             f.write("\n")
 
-    print(f"Finished logging round {round_num}")
+    logging.info(f"finished logging round {round_num}")
 
 
 def load_dataset(path):
@@ -543,7 +540,7 @@ def active_learning_train(args):
 
     if torch.cuda.is_available():
         if not args.cuda:
-            print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+            logging.warning("you have a CUDA device, so you should probably run with --cuda")
 
     device = torch.device("cuda" if args.cuda else "cpu")
 
@@ -610,12 +607,10 @@ def active_learning_train(args):
             model, GroupBatchRandomSampler(test_data_groups, args.batch_size, drop_last=False), test_set, helper,
             tag_set, criterion)
 
-        print("=" * 118)
-        print(
-            "| End of Training | Test Loss {:5.3f} | Precision {:5.3f} "
-            "| Recall {:5.3f} | F1 {:5.3f} |".format(test_loss, test_precision, test_recall, test_f1)
+        logging.info(
+            "| end of training | test loss {:5.4f} | prec {:5.4f} "
+            "| rec {:5.4f} | f1 {:5.4f} |".format(test_loss, test_precision, test_recall, test_f1)
         )
-        print("=" * 118)
 
         log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1, round_num)
 
