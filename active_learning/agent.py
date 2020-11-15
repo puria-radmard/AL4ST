@@ -19,6 +19,8 @@ class SentenceIndex:
         self.unlabelled_idx[i] = set()
 
     def label_window(self, i, r):
+        if not self.labelled_idx[i] and r[1] - r[0] > 0:
+            self.__number_partially_labelled_sentences += 1
         self.labelled_idx[i].update(range(r[0], r[1]))
         self.unlabelled_idx[i] -= set(range(r[0], r[1]))
 
@@ -90,11 +92,13 @@ class ActiveLearningAgent:
 
         self.unlabelled_set = None
         self.labelled_set = None
+        self.num = 1
 
     def init(self, n):
         logging.info('starting random init')
         self.random_init(n)
         self.update_datasets()
+        self.num = 0
         logging.info('finished random init')
 
     def step(self):
@@ -162,7 +166,7 @@ class ActiveLearningAgent:
             }
             meaning words 5, 6, 7 of word j are chosen to be labelled.
         """
-        logging.info("extending indices")
+        logging.info("update index")
 
         window_scores = []
         for i, word_scores in tqdm(sentence_scores.items()):
@@ -198,7 +202,7 @@ class ActiveLearningAgent:
             logging.warning('no more budget left!')
 
         sentence_scores = {}
-        logging.info('updating indices')
+        logging.info('get sentence scores')
         for batch_index in tqdm(self.unlabelled_set):
             # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter
             # for functionality
@@ -215,12 +219,11 @@ class ActiveLearningAgent:
         unlabelled_sentences = set()
         labelled_sentences = set()
 
-        print("\nCreating extended dataset samplers")
-
+        logging.info("update datasets")
         for i in tqdm(range(len(self.train_set))):
-            if self.index.is_partially_labelled(i):
-                unlabelled_sentences.add(i)
             if self.index.is_partially_unlabelled(i):
+                unlabelled_sentences.add(i)
+            if self.index.is_partially_labelled(i):
                 labelled_sentences.add(i)
 
         unlabelled_subset = Subset(self.train_set, list(unlabelled_sentences))
@@ -231,3 +234,18 @@ class ActiveLearningAgent:
 
         self.labelled_set = \
             list(BatchSampler(SubsetRandomSampler(labelled_subset.indices), self.batch_size, drop_last=False))
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        num = self.num
+        self.num += 1
+        if num < 0:
+            raise StopIteration
+        if num > 0:
+            self.step()
+        if self.budget <= 0:
+            self.num = -1
+        return self.budget
+

@@ -32,7 +32,7 @@ class SentenceSelector(Selector):
             For this strategy, entries is one element, with all the indices of this sentence
         """
         score = self.score_aggregation(word_scores)
-        return [(0, len(word_scores), score)]
+        return [((0, len(word_scores)), score)]
 
     def get_batch(self, batch):
         """

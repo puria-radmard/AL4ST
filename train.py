@@ -512,7 +512,7 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
     #             )
     #             f.write("\n")
 
-    print(f"Finished logging round {round}")
+    print(f"Finished logging round {round_num}")
 
 
 def load_dataset(path):
@@ -529,7 +529,7 @@ def load_dataset(path):
     relation_labels = Index()
     relation_labels.load(f"{path}/relation_labels.txt")
 
-    train_data = load(f"{path}/train.pk")[:100]
+    train_data = load(f"{path}/train.pk")[:1000]
     test_data = load(f"{path}/test.pk")
 
     word_embeddings = np.load(f"{path}/word2vec.vectors.npy")
@@ -600,7 +600,7 @@ def active_learning_train(args):
     root_dir = make_root_dir(args)
 
     round_num = 0
-    while agent.budget > 0:
+    for _ in agent:
         original_lr = args.lr
         round_results = train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, original_lr,
                                    criterion, args)
@@ -618,8 +618,6 @@ def active_learning_train(args):
         print("=" * 118)
 
         log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1, round_num)
-
-        agent.step()
 
         round_num += 1
 
