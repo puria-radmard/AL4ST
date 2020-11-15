@@ -1,32 +1,28 @@
 import torch
+import numpy as np
 
 class Selector:
 
-    def __init__(self, helper, average):
+    def __init__(self, helper, average: bool):
         self.helper = helper
         self.average = average
 
-    def joint_score_aggregation(self, scores_list):
+    def score_aggregation(self, word_scores):
         """
         Standard score aggregation where word-wise scores are added or averaged
         """
-        sentence_score = sum(scores_list)
+        score = np.sum(word_scores)
         if self.average:
-            sentence_score /= len(scores_list)
-        return sentence_score
+            score /= len(word_scores)
+        return score
 
 
-class FullSentenceSelector(Selector):
+class SentenceSelector(Selector):
 
     def __init__(self, helper, average):
         super().__init__(helper=helper, average=average)
 
-    def score_aggregation(self, scores_list):
-        # Just take the per-word normalised score list.
-        # This is the average score of each word for the whole sentence
-        return self.joint_score_aggregation(scores_list)
-
-    def score_extraction(self, scores_list):
+    def score_extraction(self, word_scores):
         """
         Input:
             scores_list: [list, of, scores, from, a, sentence, None, None]
@@ -35,16 +31,15 @@ class FullSentenceSelector(Selector):
             entries = [([list, of, word, idx], score), ...] for all possible extraction batches
             For this strategy, entries is one element, with all the indices of this sentence
         """
-        score = self.score_aggregation(scores_list)
-        indices = list(range(len(scores_list)))
-        return [(indices, score)]
+        score = self.score_aggregation(word_scores)
+        return [(0, len(word_scores), score)]
 
-    def get_batch(self, batch, agent):
+    def get_batch(self, batch):
         """
         No model predictions required!
         KL mask is all zeros, since everything in the sentence is labelled, therefore one hot encoded
         """
-        return self.helper.get_batch(batch, agent.device)
+        return self.helper.get_batch(batch)
 
 
 class WordWindowSelector(Selector):
@@ -52,11 +47,6 @@ class WordWindowSelector(Selector):
     def __init__(self, helper, average, window_size):
         super().__init__(helper=helper, average=average)
         self.window_size = window_size
-
-    def score_aggregation(self, scores_list):
-        # Just take the per-word normalised score list.
-        # This is the average score of each word for the whole sentence
-        return self.joint_score_aggregation(scores_list)
 
     def score_extraction(self, scores_list):
         """

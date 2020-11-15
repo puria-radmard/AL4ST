@@ -1,25 +1,81 @@
 import argparse
+import datetime
+import logging
 import os
+import time
 
-# Get rid of this
+from torch import optim
+from tqdm import tqdm
 
-from model import Model
+from active_learning.helper import configure_al_agent
+from model.ner_model import Model
+from model.utils import Helper
 from training_utils import *
+from utils import Charset, Vocabulary, Index, load, time_display
 
 
-def training_args():
+def configure_logger():
+    class TqdmLoggingHandler(logging.Handler):
+        def __init__(self, level=logging.NOTSET):
+            super().__init__(level)
+
+        def emit(self, record):
+            try:
+                msg = self.format(record)
+                tqdm.write(msg)
+                self.flush()
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except:
+                self.handleError(record)
+
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.getLogger(__name__).addHandler(TqdmLoggingHandler())
+
+
+def parse_args():
     parser = argparse.ArgumentParser(
         description="Joint Extraction of Entities and Relations"
     )
     parser.add_argument(
+        "-W", "--window", type=int, help="size of window acquired each time in words. set -1 for full sentence",
+        required=False, default=-1
+    )
+    parser.add_argument(
+        "-A", "--acquisition", type=str, help="acquisition function used by agent. choose from 'rand' and 'lc'",
+        required=True
+    )
+    parser.add_argument(
+        "-I", "--initprop", type=float,
+        help="proportion of sentences of training set labelled before first round. [0,1]",
+        required=True
+    )
+    parser.add_argument(
+        "-D", "--data_path", type=str, default='./data', required=False
+    )
+    parser.add_argument(
+        "-R", "--roundsize", type=int, help="number of acquisitions made per round (unitless)", required=True
+    )
+    parser.add_argument(
+        "--earlystopping", type=int, help="number of epochs of F1 decrease before early stopping", default=3
+    )
+    parser.add_argument(
+        "--temperature", type=float, help="Temperature of prediction annealing ", default=1.0
+    )
+    # parser.add_argument(
+    #     "--labelthres", type=float, help="proportion of sentence that must be manually labelled before it is used
+    #     for training", required = True
+    # )
+
+    parser.add_argument(
         "--batch_size", type=int, default=32, metavar="N", help="batch size (default: 32)"
     )
-    parser.add_argument("--cuda", default=False, action="store_false", help="use CUDA (default: True)")
+    parser.add_argument("--cuda", default=False, action="store_true", help="use CUDA (default: True)")
     parser.add_argument(
         "--dropout",
         type=float,
         default=0.5,
-        help="dropout applied to layers (default: 0.5)",
+        help="dropout applied to layers (default: 0.5)"
     )
     parser.add_argument(
         "--emb_dropout",
@@ -33,6 +89,7 @@ def training_args():
         default=0.35,
         help="gradient clip, -1 means no clip (default: 0.35)",
     )
+    # debug
     parser.add_argument(
         "--epochs", type=int, default=30, help="upper epoch limit (default: 30)"
     )
@@ -83,7 +140,11 @@ def training_args():
         help="report interval (default: 100)",
     )
     parser.add_argument(
-        "--lr", type=float, default=4, help="initial learning rate (default: 4)"
+        "--lr", type=float, default=0.02, help="initial learning rate (default: 4)"
+    )
+    parser.add_argument(
+        "--lr_decrease", type=float, default=2,
+        help="learning rate annealing factor on non-improving epochs (default: 2)"
     )
     parser.add_argument(
         "--optim", type=str, default="SGD", help="optimizer type (default: SGD)"
@@ -103,178 +164,95 @@ def training_args():
     return parser.parse_args()
 
 
-class EarlyStopper(object):
+def make_root_dir(args):
+    rn = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    root_dir = os.path.join('.', f"record-{args.acquisition}-{rn}")
+    os.mkdir(root_dir)
 
-    def __init__(self, patience: int, maximise: bool):
-        """
-        An early stopping & callback class.
-        patience is an integer, the number of epochs that a non-optimal statistic is allowed (adding number of steps soon)
-        maximise is set to True for scores, False for losses
-        """
+    with open(os.path.join(root_dir, "config.txt"), "w") as config_file:
+        config_file.write(f"Run started at: {rn} \n")
+        config_file.write(f"\n")
+        # config_file.write(f"Number of train sentences {len(train_data)} \n")
+        # config_file.write(f"Number of test sentences {len(test_data)} \n")
+        config_file.write(f"Proportion of initial labelled sentences: {args.initprop} \n")
+        config_file.write(f"Number of acquisitions per round: {args.roundsize} \n")
+        config_file.write(f"\n")
+        config_file.write(f"Acquisition strategy: {args.acquisition} \n")
+        config_file.write(f"Size of windows (-1 means whole sentence): {args.window} \n")
+        config_file.write(f"\n")
+        config_file.write(f"All args: \n")
+        for k, v in vars(args).items():
+            config_file.write(str(k))
+            config_file.write(" ")
+            config_file.write(str(v))
+            config_file.write("\n")
 
-        self.patience = patience
-        self.maximise = maximise
+    return root_dir
 
 
-def main(args):
-    # set the random seed manually for reproducibility.
-    torch.manual_seed(args.seed)
-
-    if torch.cuda.is_available():
-        if not args.cuda:
-            print("WARNING: You have a CUDA device, so you should probably run with --cuda")
-
-    device = torch.device("cuda" if args.cuda else "cpu")
-
-    char_channels = [args.emsize] + [args.char_nhid] * args.char_layers
-    word_channels = [word_embedding_size + args.char_nhid] + [
-        args.word_nhid
-    ] * args.word_layers
-
-    if os.path.exists("model.pt"):
-        model = torch.load("model.pt")
+def early_stopping_original(f1_list, num):
+    if len(f1_list) < num:
+        return False
+    elif sorted(f1_list[-num:], reverse=True) == f1_list[-num:]:
+        return True
     else:
-        model = Model(
-            charset_size=len(charset),
-            char_embedding_size=args.emsize,
-            char_channels=char_channels,
-            char_padding_idx=charset["<pad>"],
-            char_kernel_size=args.char_kernel_size,
-            weight=word_embeddings,
-            word_embedding_size=word_embedding_size,
-            word_channels=word_channels,
-            word_kernel_size=args.word_kernel_size,
-            num_tag=len(tag_set),
-            dropout=args.dropout,
-            emb_dropout=args.emb_dropout,
-        ).to(device)
-
-    weight = [args.weight] * len(tag_set)
-    weight[tag_set["O"]] = 1
-    weight = torch.tensor(weight).to(device)
-    criterion = nn.NLLLoss(weight, size_average=False)
-    optimizer = getattr(optim, args.optim)(model.parameters(), lr=args.lr)
-
-    best_val_loss = None
-    lr = args.lr
-    all_val_loss = []
-    all_precision = []
-    all_recall = []
-    all_f1 = []
-
-    # At any point you can hit Ctrl + C to break out of training early.
-    try:
-        start_time = time.time()
-        print("-" * 118)
-        for epoch in range(1, args.epochs + 1):
-            train()
-
-            val_loss, precision, recall, f1 = evaluate(val_data_groups)
-
-            elapsed = time.time() - start_time
-            print("-" * 118)
-            print(
-                "| End of Epoch {:2d} | Elapsed Time {:s} | Validation Loss {:5.3f} | Precision {:5.3f} "
-                "| Recall {:5.3f} | F1 {:5.3f} |".format(
-                    epoch, time_display(elapsed), val_loss, precision, recall, f1
-                )
-            )
-            print("-" * 118)
-
-            # Save the model if the validation loss is the best we've seen so far.
-            if not best_val_loss or val_loss < best_val_loss:
-                with open(args.save, "wb") as f:
-                    torch.save(model, f)
-                best_val_loss = val_loss
-            else:
-                # Anneal the learning rate if no improvement has been seen in the validation dataset.
-                lr = lr / 4.0
-                for param_group in optimizer.param_groups:
-                    param_group["lr"] = lr
-            all_val_loss.append(val_loss)
-            all_precision.append(precision)
-            all_recall.append(recall)
-            all_f1.append(f1)
-
-    except KeyboardInterrupt:
-        print("-" * 118)
-        print("Exiting from training early")
-
-    # Load the best saved model.
-    with open(args.save, "rb") as f:
-        model = torch.load(f)
-
-    # Run on test data
-    test_loss, precision, recall, f1 = evaluate(test_data_groups)
-    print("=" * 118)
-    print(
-        "| End of Training | Test Loss {:5.3f} | Precision {:5.3f} "
-        "| Recall {:5.3f} | F1 {:5.3f} |".format(test_loss, precision, recall, f1)
-    )
-    print("=" * 118)
-
-    with open("record.tsv", "wt", encoding="utf-8") as f:
-        for idx in range(len(all_val_loss)):
-            f.write(
-                "{:d}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
-                    idx + 1,
-                    all_val_loss[idx],
-                    all_precision[idx],
-                    all_recall[idx],
-                    all_f1[idx],
-                )
-            )
-        f.write(
-            "\n{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
-                test_loss, precision, recall, f1
-            )
-        )
+        return False
 
 
-"""
-charset_size: 96
-char_embedding_size: 50
-char_channels: [50, 50, 50, 50]
-char_padding_idx: 94
-char_kernel_size: 3
-weight: tensor([[-0.4441,  0.4617,  0.1288,  ...,  0.4624,  0.2199, -0.1290],
-        [-0.4024,  0.2595,  0.4271,  ...,  0.3322, -0.1303,  0.0604],
-        [ 0.2019, -0.1130, -0.1495,  ..., -0.2575,  0.0146, -0.1554],
-        ...,
-        [ 0.1529,  0.1099, -0.1428,  ..., -0.1544,  0.1506, -0.0258],
-        [ 0.1294,  0.0606, -0.0225,  ..., -0.2985,  0.0162, -0.1880],
-        [ 0.0975, -0.0968, -0.2453,  ..., -0.2132,  0.1037, -0.2321]])
-word_embedding_size: 300
-word_channels: [350, 300, 300, 300]
-word_kernel_size: 3
-num_tag: 193
-dropout: (0.5,)
-emb_dropout: 0.25
-
-"""
+def early_stopping(f1_list, num=3):
+    if num < 0:
+        return False
+    if len(f1_list) < num:
+        return False
+    elif len(f1_list) - np.argmax(f1_list) > num:
+        return True
+    else:
+        return False
 
 
-def train():
+def measure(output, targets, lengths, tag_set):
+    assert output.size(0) == targets.size(0) and targets.size(0) == lengths.size(0)
+    tp = 0
+    tp_fp = 0
+    tp_fn = 0
+    batch_size = output.size(0)
+    output = torch.argmax(output, dim=-1)
+    targets = torch.argmax(targets, dim=-1)
+    for i in range(batch_size):
+        length = lengths[i]
+        out = output[i][:length].tolist()
+        target = targets[i][:length].tolist()
+        out_triplets = get_triplets(out, tag_set)
+        tp_fp += len(out_triplets)
+        target_triplets = get_triplets(target, tag_set)
+        tp_fn += len(target_triplets)
+        for target_triplet in target_triplets:
+            for out_triplet in out_triplets:
+                if out_triplet == target_triplet:
+                    tp += 1
+    return tp, tp_fp, tp_fn
+
+
+def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, args):
     model.train()
     total_loss = 0
     count = 0
-    sampler = GroupBatchRandomSampler(
-        train_data_groups, args.batch_size, drop_last=False
-    )
-    for idx, batch_indices in enumerate(sampler):
-        sentences, tokens, targets, lengths = get_batch(
-            batch_indices, train_data, device
-        )
 
-        # [vocab[int(a)] for a in sentences[10]] reveals sentence
-        # [tag_set[int(a)] for a in targets[10]] reveals corresponding taglist
+    sampler = agent.labelled_set
+    for idx, batch_indices in enumerate(sampler):
+
+        model.eval()
+        sentences, tokens, targets, lengths = \
+            [a.to(device) for a in agent.get_batch(idx)]
+        model.train()
 
         optimizer.zero_grad()
         output = model(sentences, tokens)
         # output in shape [batch_size, length_of_sentence, num_tags (193)]
 
-        output = pack_padded_sequence(output, lengths, batch_first=True).data
-        targets = pack_padded_sequence(targets, lengths, batch_first=True).data
+        # output = pack_padded_sequence(output, lengths.cpu(), batch_first=True).data
+        # targets = pack_padded_sequence(targets, lengths.cpu(), batch_first=True).data
+
         loss = criterion(output, targets)
         loss.backward()
         if args.clip > 0:
@@ -283,6 +261,7 @@ def train():
 
         total_loss += loss.item()
         count += len(targets)
+
         if (idx + 1) % args.log_interval == 0:
             cur_loss = total_loss / count
             elapsed = time.time() - start_time
@@ -299,7 +278,7 @@ def train():
                     len(sampler),
                     time_display(elapsed),
                     time_display(remaining),
-                    lr,
+                    args.lr,
                     cur_loss,
                 )
             )
@@ -307,56 +286,345 @@ def train():
             count = 0
 
 
-def evaluate(data_groups):
+# NOT CHANGED BY AL
+def evaluate(model, data_sampler, dataset, helper, tag_set, criterion):
     model.eval()
     total_loss = 0
     count = 0
-    TP = 0
-    TP_FP = 0
-    TP_FN = 0
+    tp_total = 0
+    tp_fp_total = 0
+    tp_fn_total = 0
     with torch.no_grad():
-        for batch_indices in GroupBatchRandomSampler(
-                data_groups, args.batch_size, drop_last=False
-        ):
-            sentences, tokens, targets, lengths = get_batch(
-                batch_indices, train_data, device
-            )
+        for batch_indices in data_sampler:
+            batch = [dataset[j] for j in batch_indices]
+            sentences, tokens, targets, lengths = helper.get_batch(batch)
+
             output = model(sentences, tokens)
-            tp, tp_fp, tp_fn = measure(output, targets, lengths)
-            TP += tp
-            TP_FP += tp_fp
-            TP_FN += tp_fn
-            output = pack_padded_sequence(output, lengths, batch_first=True).data
-            targets = pack_padded_sequence(targets, lengths, batch_first=True).data
+            tp, tp_fp, tp_fn = measure(output, targets, lengths, tag_set)
+            # tp, tp_fp, tp_fn = 5,5,5
+
+            tp_total += tp
+            tp_fp_total += tp_fp
+            tp_fn_total += tp_fn
+
             loss = criterion(output, targets)
             total_loss += loss.item()
+
             count += len(targets)
-    return total_loss / count, TP / TP_FP, TP / TP_FN, 2 * TP / (TP_FP + TP_FN)
+    if tp_fp_total == 0:
+        tp_fp_total = 1
+    if tp_fn_total == 0:
+        tp_fn_total = 1
+    return (
+        total_loss / count,
+        tp_total / tp_fp_total,
+        tp_total / tp_fn_total,
+        2 * tp_total / (tp_fp_total + tp_fn_total)
+    )
 
 
-def measure(output, targets, lengths):
-    assert output.size(0) == targets.size(0) and targets.size(0) == lengths.size(0)
-    tp = 0
-    tp_fp = 0
-    tp_fn = 0
-    batch_size = output.size(0)
-    output = torch.argmax(output, dim=-1)
-    for i in range(batch_size):
-        length = lengths[i]
-        out = output[i][:length].tolist()
-        target = targets[i][:length].tolist()
-        out_triplets = get_triplets(out)
-        tp_fp += len(out_triplets)
-        target_triplets = get_triplets(target)
-        tp_fn += len(target_triplets)
-        for target_triplet in target_triplets:
-            for out_triplet in out_triplets:
-                if out_triplet == target_triplet:
-                    tp += 1
-    return tp, tp_fp, tp_fn
+def train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, original_lr, criterion, args):
+    lr = args.lr
+    earlystopper = EarlyStopper(patience=args.earlystopping, maximise=False)
+
+    all_val_loss = []
+    all_val_precision = []
+    all_val_recall = []
+    all_val_f1 = []
+
+    all_train_loss = []
+    all_train_precision = []
+    all_train_recall = []
+    all_train_f1 = []
+
+    start_time = time.time()
+    print("-" * 118)
+
+    num_sentences = agent.index.get_number_partially_labelled_sentences()
+    num_words = agent.budget_spent()
+
+    optimizer = getattr(optim, args.optim)(model.parameters(), lr=original_lr)
+
+    print(f"Starting training with {num_words} words labelled in {num_sentences} sentences")
+    for epoch in range(1, args.epochs + 1):
+
+        state_dict_and_epoch = earlystopper.assess_model(model, all_val_loss, epoch)
+
+        if state_dict_and_epoch:
+            state_dict, best_epoch = state_dict_and_epoch[0], state_dict_and_epoch[1]
+            logging.info(
+                f"Reloading from epoch {epoch} to epoch {best_epoch}, "
+                f"and skipping to next round (acquiring more data).")
+            model.load_state_dict(state_dict)
+            break
+
+        train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, args)
+
+        logging.info('beginning evaluation')
+        val_loss, val_precision, val_recall, val_f1 = \
+            evaluate(model, GroupBatchRandomSampler(val_data_groups, args.batch_size, drop_last=False), val_set,
+                     helper, tag_set, criterion)
+        train_loss, train_precision, train_recall, train_f1 = \
+            evaluate(model, agent.labelled_set, agent.train_set, helper, tag_set, criterion)
+
+        elapsed = time.time() - start_time
+        logging.info(
+            "| epoch {:2d} | elapsed time {:s} | train_loss {:5.4f} | val_loss {:5.4f} | prec {:5.4f} "
+            "| rec {:5.4f} | f1 {:5.4f} |".format(
+                epoch, time_display(elapsed), train_loss, val_loss, val_precision, val_recall, val_f1))
+
+        # Anneal the learning rate if no improvement has been seen in the validation dataset.
+        if len(all_val_loss) and val_loss > max(all_val_loss):
+            lr = lr / args.lr_decrease
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr
+
+        all_val_loss.append(val_loss)
+        all_val_precision.append(val_precision)
+        all_val_recall.append(val_recall)
+        all_val_f1.append(val_f1)
+
+        all_train_loss.append(train_loss)
+        all_train_precision.append(train_precision)
+        all_train_recall.append(train_recall)
+        all_train_f1.append(train_f1)
+
+    return {
+        "num_words": num_words,
+        "num_sentences": num_sentences,
+        "all_val_loss": all_val_loss,
+        "all_val_precision": all_val_precision,
+        "all_val_recall": all_val_recall,
+        "all_val_f1": all_val_f1,
+        "all_train_loss": all_train_loss,
+        "all_train_precision": all_train_precision,
+        "all_train_recall": all_train_recall,
+        "all_train_f1": all_train_f1,
+    }
 
 
-if __name__ == '__main__':
-    args = training_args()
-    print(args)
-    main(args)
+def log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1, round_num):
+    num_words = round_results["num_words"]
+    num_sentences = round_results["num_sentences"]
+
+    round_dir = os.path.join(root_dir, f"round-{round_num}")
+    os.mkdir(round_dir)
+    print(f"Logging round {round_num}")
+
+    with open(
+            os.path.join(round_dir, f"record.tsv"), "wt", encoding="utf-8"
+    ) as f:
+        f.write("Epoch\tT_LOSS\tT_PREC\tT_RECL\tT_F1\tV_LOSS\tV_PREC\tV_RECL\tV_F1\n")
+        for idx in range(len(round_results["all_val_loss"])):
+            f.write(
+                "{:d}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
+                    idx + 1,
+                    round_results["all_train_loss"][idx],
+                    round_results["all_train_precision"][idx],
+                    round_results["all_train_recall"][idx],
+                    round_results["all_train_f1"][idx],
+                    round_results["all_val_loss"][idx],
+                    round_results["all_val_precision"][idx],
+                    round_results["all_val_recall"][idx],
+                    round_results["all_val_f1"][idx],
+                )
+            )
+        f.write(
+            "\nTEST_LOSS\tTEST_PREC\tTEST_RECALL\tTEST_F1\n"
+        )
+        f.write(
+            "{:5.3f}\t{:5.3f}\t{:5.3f}\t{:5.3f}\n".format(
+                test_loss, test_precision, test_recall, test_f1
+            )
+        )
+        f.write(
+            f"\n{num_words} words in {num_sentences} sentences. Total {len(agent.train_set)} sentences.\n\n"
+        )
+
+    with open(
+            os.path.join(round_dir, f"sentence_prop-{round}.tsv"), "wt", encoding="utf-8"
+    ) as f:
+
+        f.write("Proportions of sentences in words that have been manually labelled \n")
+        f.write("The remainder of the words in the sentence have been automatically labelled by")
+        f.write("the model before training, as per the threshold argument (if implemented) \n")
+        f.write("\n")
+
+        i = 0
+        for sentence_idx, labelled_idx in agent.index.labelled_idx.items():
+            num_labelled = len(labelled_idx)
+            num_unlabelled = len(agent.index.unlabelled_idx[sentence_idx])
+            prop = num_labelled / (num_labelled + num_unlabelled)
+            f.write(str(prop))
+            i += 1
+            if i % 10 == 0:
+                f.write("\n")
+                i = 0
+            else:
+                f.write("\t")
+
+    # with open(
+    #         os.path.join(round_dir, f"sentence_labels-{round}"), "wt", encoding="utf-8"
+    # ) as f:
+    #     f.write("This file shows sentences used in training for this round.\n")
+    #     f.write("For each sentence, first row represents the words in the sentence.\n")
+    #     f.write(
+    #         "\tUPPERCASE are words labelled by the annotator, lowercase are the words automatically"
+    #         " labelled by the model.\n")
+    #     f.write("The second row is the ground truth labels.\n")
+    #     f.write("The third row is the labels used by the model in training.\n")
+    #     f.write("\n")
+    #     f.write(
+    #         "For full sentence labelling all words will be uppercase. For oracles the second and third row will"
+    #         "be the same for uppercase words\n")
+    #     f.write("\n")
+    #
+    #     for batch_indices in agent.labelled_batch_indices:
+    #
+    #         sentences, _, used_targets, _, _ = agent.get_batch(
+    #             batch_indices, agent.autolabelled_data, device
+    #         )
+    #         _, _, real_targets, _, _ = get_batch(
+    #             batch_indices, train_data, device
+    #         )
+    #
+    #         for j, batch_idx in enumerate(batch_indices):
+    #             labelled_idx = agent.labelled_idx[batch_idx]
+    #             f.write("\n")
+    #             f.write(f"Sentence {batch_idx}\n")
+    #             f.write(
+    #                 "\t".join([
+    #                     vocab[int(v)].upper() if k in labelled_idx else vocab[int(v)].upper() for k, v in
+    #                     enumerate(sentences[j])
+    #                 ])
+    #             )
+    #             f.write("\n")
+    #             f.write(
+    #                 "\t".join([
+    #                     tag_set[int(v)] for v in real_targets[j]
+    #                 ])
+    #             )
+    #             f.write("\n")
+    #             f.write(
+    #                 "\t".join([
+    #                     tag_set[int(v)] for v in used_targets[j]
+    #                 ])
+    #             )
+    #             f.write("\n")
+
+    print(f"Finished logging round {round}")
+
+
+def load_dataset(path):
+    charset = Charset()
+
+    vocab = Vocabulary()
+    vocab.load(f"{path}/vocab.txt")
+
+    tag_set = Index()
+    tag_set.load(f"{path}/tag2id.txt")
+
+    helper = Helper(vocab, tag_set, charset)
+
+    relation_labels = Index()
+    relation_labels.load(f"{path}/relation_labels.txt")
+
+    train_data = load(f"{path}/train.pk")[:100]
+    test_data = load(f"{path}/test.pk")
+
+    word_embeddings = np.load(f"{path}/word2vec.vectors.npy")
+
+    return helper, word_embeddings, train_data, test_data, tag_set
+
+
+def active_learning_train(args):
+    # set the random seed manually for reproducibility.
+    torch.manual_seed(args.seed)
+
+    if torch.cuda.is_available():
+        if not args.cuda:
+            print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+
+    device = torch.device("cuda" if args.cuda else "cpu")
+
+    # TODO: make the path a parameter
+    helper, word_embeddings, train_set, test_set, tag_set = load_dataset(args.data_path)
+
+    # CHANGED FOR DEBUG
+    val_size = int(0.01 * len(train_set))
+    train_set, val_set = random_split(train_set, [len(train_set) - val_size, val_size])
+
+    # [vocab[a] for a in test_data[0][0]]   gives a sentence
+    # [tag_set[a] for a in test_data[0][2]] gives the corresponding tagseq
+
+    val_data_groups = group(val_set, [10, 20, 30, 40, 50, 60])
+    test_data_groups = group(test_set, [10, 20, 30, 40, 50, 60])
+
+    word_embeddings = torch.tensor(word_embeddings)
+    word_embedding_size = word_embeddings.size(1)
+    pad_embedding = torch.empty(1, word_embedding_size).uniform_(-0.5, 0.5)
+    unk_embedding = torch.empty(1, word_embedding_size).uniform_(-0.5, 0.5)
+    word_embeddings = torch.cat([pad_embedding, unk_embedding, word_embeddings])
+
+    char_channels = [args.emsize] + [args.char_nhid] * args.char_layers
+
+    word_channels = [word_embedding_size + args.char_nhid] + [
+        args.word_nhid
+    ] * args.word_layers
+
+    weight = [args.weight] * len(helper.tag_set)
+    weight[helper.tag_set["O"]] = 1
+    weight = torch.tensor(weight).to(device)
+    criterion = ModifiedKL(weight)
+
+    model = Model(
+        charset_size=len(helper.charset),
+        char_embedding_size=args.emsize,
+        char_channels=char_channels,
+        char_padding_idx=helper.charset["<pad>"],
+        char_kernel_size=args.char_kernel_size,
+        weight=word_embeddings,
+        word_embedding_size=word_embedding_size,
+        word_channels=word_channels,
+        word_kernel_size=args.word_kernel_size,
+        num_tag=len(helper.tag_set),
+        dropout=args.dropout,
+        emb_dropout=args.emb_dropout,
+        T=args.temperature
+    ).to(device)
+
+    agent = configure_al_agent(args, device, model, train_set, helper)
+    agent.init(int(len(train_set) * args.initprop))
+
+    # logger
+    root_dir = make_root_dir(args)
+
+    round_num = 0
+    while agent.budget > 0:
+        original_lr = args.lr
+        round_results = train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, original_lr,
+                                   criterion, args)
+
+        # Run on test data
+        test_loss, test_precision, test_recall, test_f1 = evaluate(
+            model, GroupBatchRandomSampler(test_data_groups, args.batch_size, drop_last=False), test_set, helper,
+            tag_set, criterion)
+
+        print("=" * 118)
+        print(
+            "| End of Training | Test Loss {:5.3f} | Precision {:5.3f} "
+            "| Recall {:5.3f} | F1 {:5.3f} |".format(test_loss, test_precision, test_recall, test_f1)
+        )
+        print("=" * 118)
+
+        log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1, round_num)
+
+        agent.step()
+
+        round_num += 1
+
+
+if __name__ == "__main__":
+    configure_logger()
+    op_args = parse_args()
+    active_learning_train(args=op_args)

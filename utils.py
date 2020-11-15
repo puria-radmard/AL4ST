@@ -1,7 +1,7 @@
-import string
 import pickle
+import string
 from io import open
-from glob import glob
+
 
 class Index(object):
     def __init__(self):

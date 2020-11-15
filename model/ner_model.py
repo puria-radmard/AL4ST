@@ -3,9 +3,87 @@ import torch
 import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence
+from torch.nn.utils import weight_norm
 
-from conv_net import ConvNet
+
+class ConvBlock(nn.Module):
+    def __init__(
+            self,
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=1,
+            padding=0,
+            dilation=1,
+            residual=True,
+    ):
+        super(ConvBlock, self).__init__()
+        self.conv = weight_norm(
+            nn.Conv1d(
+                in_channels,
+                out_channels,
+                kernel_size,
+                stride=stride,
+                padding=padding,
+                dilation=dilation,
+            )
+        )
+        self.activate = nn.ReLU()
+        self.residual = residual
+        self.down_sample = (
+            nn.Conv1d(in_channels, out_channels, 1)
+            if residual and in_channels != out_channels
+            else None
+        )
+        self.init_weights()
+
+    def init_weights(self):
+        nn.init.kaiming_uniform_(
+            self.conv.weight.data, mode="fan_in", nonlinearity="relu"
+        )
+        if self.conv.bias is not None:
+            self.conv.bias.data.fill_(0)
+        if self.down_sample is not None:
+            nn.init.kaiming_uniform_(
+                self.down_sample.weight.data, mode="fan_in", nonlinearity="relu"
+            )
+            if self.down_sample.bias is not None:
+                self.down_sample.bias.data.fill_(0)
+
+    def forward(self, inputs):
+        output = self.activate(self.conv(inputs))
+        if self.residual:
+            output += self.down_sample(inputs) if self.down_sample else inputs
+        return output
+
+
+class ConvNet(nn.Module):
+    def __init__(
+            self, channels, kernel_size=3, dropout=0.5, dilated=False, residual=True
+    ):
+        super(ConvNet, self).__init__()
+        num_levels = len(channels) - 1
+        layers = []
+        for i in range(num_levels):
+            in_channels = channels[i]
+            out_channels = channels[i + 1]
+            dilation = kernel_size ** i if dilated else 1
+            padding = (kernel_size - 1) // 2 * dilation
+            layers += [
+                ConvBlock(
+                    in_channels,
+                    out_channels,
+                    kernel_size,
+                    padding=padding,
+                    dilation=dilation,
+                    residual=residual,
+                ),
+                nn.Dropout(dropout),
+            ]
+        self.net = nn.Sequential(*layers[:-1])
+
+    def forward(self, inputs):
+        return self.net(inputs)
 
 
 class CharEncoder(nn.Module):
@@ -174,42 +252,6 @@ class Model(nn.Module):
         pass
         # self.decoder.bias.data.fill_(0)
         # nn.init.kaiming_uniform_(self.decoder.weight.data, mode='fan_in', nonlinearity='relu')
-
-
-class Helper:
-
-    def __init__(self, vocab, tag_set, charset):
-        self.vocab = vocab
-        self.tag_set = tag_set
-        self.charset = charset
-
-    def get_batch(self, batch, device):
-        sentences, tokens, tags = zip(*batch)
-
-        padded_sentences, lengths = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in sentences], enforce_sorted=False),
-            batch_first=True,
-            padding_value=self.vocab["<pad>"],
-        )
-        padded_tokens, _ = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in tokens], enforce_sorted=False),
-            batch_first=True,
-            padding_value=self.charset["<pad>"],
-        )
-        padded_tags, _ = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in tags], enforce_sorted=False),
-            batch_first=True,
-            padding_value=self.tag_set["O"],
-        )
-
-        padded_tags = nn.functional.one_hot(padded_tags, num_classes=193).float()  # MAKE NUM CLASSES A PARAMETER?
-
-        return (
-            padded_sentences.to(device),
-            padded_tokens.to(device),
-            padded_tags.to(device),
-            lengths.to(device)
-        )
 
 
 if __name__ == "__main__":

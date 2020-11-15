@@ -1,7 +1,7 @@
 from active_learning.acquisition import RandomBaselineAcquisition, LowestConfidenceAcquisition, \
     MaximumEntropyAcquisition, BALDAcquisition
 from active_learning.agent import ActiveLearningAgent
-from active_learning.selector import WordWindowSelector, FullSentenceSelector
+from active_learning.selector import WordWindowSelector, SentenceSelector
 
 
 def configure_al_agent(args, device, model, train_set, helper):
@@ -16,7 +16,7 @@ def configure_al_agent(args, device, model, train_set, helper):
     if args.window != -1:
         selector = WordWindowSelector(helper=helper, average=average, window_size=args.window)
     else:
-        selector = FullSentenceSelector(helper, average=average)
+        selector = SentenceSelector(helper, average=average)
 
     if args.acquisition == 'baseline' and args.initprop != 1.0:
         raise ValueError("To run baseline, you must set initprop == 1.0")

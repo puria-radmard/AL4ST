@@ -6,14 +6,17 @@ class Acquisition:
     def __init__(self, model):
         self.model = model
 
+    def score(self, sentences, lengths, tokens):
+        pass
+
 
 class RandomBaselineAcquisition(Acquisition):
 
     def __init__(self, model):
         super().__init__(model=model)
 
-    def score(self, sentences, sentence_lengths, tokens):
-        return [np.random.sample(length) for length in sentence_lengths]
+    def score(self, sentences, lengths, tokens):
+        return [np.random.sample(length) for length in lengths]
 
 
 class LowestConfidenceAcquisition(Acquisition):

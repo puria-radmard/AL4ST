@@ -1,7 +1,7 @@
 import logging
 from random import sample
+from typing import List, Dict
 
-import torch
 from torch.utils.data import BatchSampler, SubsetRandomSampler, Subset
 from tqdm import tqdm
 
@@ -18,14 +18,30 @@ class SentenceIndex:
         self.__number_partially_labelled_sentences += 1
         self.unlabelled_idx[i] = set()
 
+    def label_window(self, i, r):
+        self.labelled_idx[i].update(range(r[0], r[1]))
+        self.unlabelled_idx[i] -= set(range(r[0], r[1]))
+
     def is_partially_labelled(self, i):
         return len(self.labelled_idx[i]) > 0
+
+    def is_labelled(self, i):
+        return len(self.unlabelled_idx[i]) == 0
 
     def is_partially_unlabelled(self, i):
         return len(self.unlabelled_idx[i]) > 0
 
     def get_number_partially_labelled_sentences(self):
         return self.__number_partially_labelled_sentences
+
+    def make_nan_if_labelled(self, i, scores):
+        res = []
+        for j in range(len(scores)):
+            if j in self.unlabelled_idx[i]:
+                res.append(scores[j])
+            else:
+                res.append(float('nan'))
+        return res
 
 
 class ActiveLearningAgent:
@@ -76,10 +92,17 @@ class ActiveLearningAgent:
         self.labelled_set = None
 
     def init(self, n):
-        print("Starting random init")
+        logging.info('starting random init')
         self.random_init(n)
         self.update_datasets()
-        print("Finished random init")
+        logging.info('finished random init')
+
+    def step(self):
+        logging.info('step')
+        sentence_scores: Dict[int, List[float]] = self.get_sentence_scores()
+        self.update_index(sentence_scores)
+        self.update_datasets()
+        logging.info('finished step')
 
     def budget_spent(self):
         return self.initial_budget - self.budget
@@ -106,24 +129,23 @@ class ActiveLearningAgent:
     def get_batch(self, i):
         # Use selector get_batch here as we want to fill things in if needed
         batch = [self.train_set[j] for j in self.labelled_set[i]]
-        batch_items = self.selector.get_batch(batch, self)
-        return tuple(a.to(self.device) for a in batch_items)
+        return self.selector.get_batch(batch)
 
-    @staticmethod
-    def purify_entries(entries):
-        """Sort and remove disjoint entries of form [([list, of, word, idx], score), ...]"""
-        start_entries = sorted(entries, key=lambda x: x[-1], reverse=True)
-        final_entries = []
-        highest_idx = set()
-        for entry in start_entries:
-            if highest_idx.intersection(entry[0]):
-                pass
-            else:
-                highest_idx = highest_idx.union(entry[0])
-                final_entries.append(entry)
-        return final_entries
+    # @staticmethod
+    # def purify_entries(entries):
+    #    """Sort and remove disjoint entries of form [([list, of, word, idx], score), ...]"""
+    #    start_entries = sorted(entries, key=lambda x: x[-1], reverse=True)
+    #    final_entries = []
+    #    highest_idx = set()
+    #    for entry in start_entries:
+    #        if highest_idx.intersection(entry[0]):
+    #            pass
+    #        else:
+    #            highest_idx = highest_idx.union(entry[0])
+    #            final_entries.append(entry)
+    #    return final_entries
 
-    def extend_indices(self, sentence_scores):
+    def update_index(self, sentence_scores):
         """
         After a full pass on the unlabelled pool, apply a policy to get the top scoring phrases and add them to
         self.labelled_idx.
@@ -140,67 +162,54 @@ class ActiveLearningAgent:
             }
             meaning words 5, 6, 7 of word j are chosen to be labelled.
         """
+        logging.info("extending indices")
 
-        temp_score_list = []
-
-        print("\nExtending indices")
-        for sentence_idx, scores_list in tqdm(sentence_scores.items()):
+        window_scores = []
+        for i, word_scores in tqdm(sentence_scores.items()):
             # Skip if already all Nones
-            if all([type(i) == type(None) for i in scores_list]):
+            if self.index.is_labelled(i):
                 continue
-            entries = self.selector.score_extraction(scores_list)
-            entries = self.purify_entries(
-                entries)  # entries = [([list, of, word, idx], score), ...] that can be compared to temp_score_list
-            temp_score_list.extend([(sentence_idx, entry[0], entry[1]) for entry in entries])
+            windows = self.selector.score_extraction(word_scores)
+            window_scores.extend([(i, window[0], window[1]) for window in windows])
 
-        temp_score_list.sort(key=lambda e: e[-1], reverse=True)
-        temp_score_list = temp_score_list[:self.round_size]
+        window_scores.sort(key=lambda e: e[-1], reverse=True)
 
-        j = 0
-        for sentence_idx, word_inds, score in temp_score_list:
-            self.budget -= len(word_inds)
+        window_scores = window_scores[:self.round_size]
+
+        n_spent = 0
+        for i, r, _ in window_scores:
+            cost = r[1] - r[0]
+            self.budget -= cost
             if self.budget < 0:
-                print("No more budget left!")
+                logging.warning('no more budget left!')
                 break
-            j += len(word_inds)
-            self.index.labelled_idx[sentence_idx] = self.index.labelled_idx[sentence_idx].union(word_inds)
-            for w in word_inds:
-                self.index.unlabelled_idx[sentence_idx].remove(w)
+            n_spent += cost
+            self.index.label_window(i, r)
 
-        print(f"Added {j} words to index mapping")
-        return temp_score_list
+        logging.info(f'added {n_spent} words to index mapping')
 
-    def get_all_scores(self):
+    def get_sentence_scores(self):
         """
         Score unlabelled instances in terms of their suitability to be labelled next.
         Add the highest scoring instance indices in the dataset to self.labelled_idx
         """
+
         if self.budget <= 0:
-            logging.warning("No more budget left!")
+            logging.warning('no more budget left!')
 
         sentence_scores = {}
-
-        print("\nUpdating indices")
+        logging.info('updating indices')
         for batch_index in tqdm(self.unlabelled_set):
             # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter
             # for functionality
-            batch = [self.train_set[j] for j in batch_index]
-            sentences, tokens, _, lengths = self.helper.get_batch(batch, self.device)
-            word_scores = self.acquisition.score(sentences=sentences, sentence_lengths=lengths, tokens=tokens)
-            for i, b in enumerate(batch_index):
-                sentence_scores[b] = [
-                    float(word_scores[i][j]) if j in self.index.unlabelled_idx[b] else None
-                    for j in range(lengths[i])
-                ]  # scores of unlabelled words --> float, scores of labelled words --> None
+            batch = [self.train_set[i] for i in batch_index]
+            sentences, tokens, _, lengths = self.helper.get_batch(batch)
+            batch_scores = self.acquisition.score(sentences=sentences, lengths=lengths, tokens=tokens)
+
+            for j, i in enumerate(batch_index):
+                sentence_scores[i] = self.index.make_nan_if_labelled(i, batch_scores[j])
 
         return sentence_scores
-
-    def update_indices(self):
-
-        sentence_scores = self.get_all_scores()
-        temp_score_list = self.extend_indices(sentence_scores)
-
-        return sentence_scores, temp_score_list
 
     def update_datasets(self):
         unlabelled_sentences = set()
@@ -222,13 +231,3 @@ class ActiveLearningAgent:
 
         self.labelled_set = \
             list(BatchSampler(SubsetRandomSampler(labelled_subset.indices), self.batch_size, drop_last=False))
-
-    def __iter__(self):
-        # DONT FORGET: DO self.selector.get_batch on self.train_data
-        return (
-            self.labelled_set[i]
-            for i in torch.randperm(len(self.labelled_set))
-        )
-
-    def __len__(self):
-        return len(self.labelled_set)
