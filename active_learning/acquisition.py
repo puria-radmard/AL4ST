@@ -3,11 +3,14 @@ import numpy as np
 
 class Acquisition:
 
-    def score(self, sentences, sentence_lens, tokens):
-        pass
+    def __init__(self, model):
+        self.model = model
 
 
 class RandomBaselineAcquisition(Acquisition):
+
+    def __init__(self, model):
+        super().__init__(model=model)
 
     def score(self, sentences, sentence_lengths, tokens):
         return [np.random.sample(length) for length in sentence_lengths]
@@ -16,7 +19,7 @@ class RandomBaselineAcquisition(Acquisition):
 class LowestConfidenceAcquisition(Acquisition):
 
     def __init__(self, model):
-        self.model = model
+        super().__init__(model=model)
 
     def score(self, sentences, sentence_lengths, tokens):
         y_hat = self.model(sentences, tokens)  # logits (batch_size x sent_length x num_tags [193])
@@ -27,7 +30,7 @@ class LowestConfidenceAcquisition(Acquisition):
 class MaximumEntropyAcquisition(Acquisition):
 
     def __init__(self, model):
-        self.model = model
+        super().__init__(model=model)
 
     def score(self, sentences, sentence_lengths, tokens):
         y_hat = self.model(sentences, tokens)  # logits (batch_size x sent_length x num_tags [193])

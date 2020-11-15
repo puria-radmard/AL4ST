@@ -98,7 +98,7 @@ class GroupBatchRandomSampler(object):
         return len(self.batch_indices)
 
 
-def get_triplets(tags):
+def get_triplets(tags, tag_set):
     temp = {}
     triplets = []
     for idx, tag in enumerate(tags):

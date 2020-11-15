@@ -183,8 +183,7 @@ class Helper:
         self.tag_set = tag_set
         self.charset = charset
 
-
-    def get_batch(self, batch):
+    def get_batch(self, batch, device):
         sentences, tokens, tags = zip(*batch)
 
         padded_sentences, lengths = pad_packed_sequence(
@@ -206,10 +205,10 @@ class Helper:
         padded_tags = nn.functional.one_hot(padded_tags, num_classes=193).float()  # MAKE NUM CLASSES A PARAMETER?
 
         return (
-            padded_sentences,
-            padded_tokens,
-            padded_tags,
-            lengths
+            padded_sentences.to(device),
+            padded_tokens.to(device),
+            padded_tags.to(device),
+            lengths.to(device)
         )
 
 

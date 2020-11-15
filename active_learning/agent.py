@@ -37,7 +37,7 @@ class ActiveLearningAgent:
             round_size,
             acquisition_class,
             selector_class,
-            model,
+            helper,
             device
     ):
         """
@@ -62,7 +62,7 @@ class ActiveLearningAgent:
         self.train_set = train_set
         self.acquisition = acquisition_class
         self.selector = selector_class
-        self.model = model
+        self.helper = helper
         self.device = device
 
         # Dictionaries mapping {sentence idx: [list, of, word, idx]} for labelled and unlabelled words
@@ -104,8 +104,10 @@ class ActiveLearningAgent:
             """)
 
     def get_batch(self, i):
-        batch = [self.train_set[i] for i in self.labelled_set[i]]
-        return self.selector.get_batch(batch, self)
+        # Use selector get_batch here as we want to fill things in if needed
+        batch = [self.train_set[j] for j in self.labelled_set[i]]
+        batch_items = self.selector.get_batch(batch, self)
+        return tuple(a.to(self.device) for a in batch_items)
 
     @staticmethod
     def purify_entries(entries):
@@ -123,11 +125,12 @@ class ActiveLearningAgent:
 
     def extend_indices(self, sentence_scores):
         """
-        After a full pass on the unlabelled pool, apply a policy to get the top scoring phrases and add them to self.labelled_idx.
+        After a full pass on the unlabelled pool, apply a policy to get the top scoring phrases and add them to
+        self.labelled_idx.
 
         Input:
-            sentence_scores: {j: [list, of, scores, per, word, None, None]} where None means the word has alread been labelled
-                                                                                i.e. full list of scores/Nones
+            sentence_scores: {j: [list, of, scores, per, word, None, None]} where None means the word has alread been
+            labelled i.e. full list of scores/Nones
         Output:
             No output, but extends self.labelled_idx:
             {
@@ -160,14 +163,14 @@ class ActiveLearningAgent:
                 print("No more budget left!")
                 break
             j += len(word_inds)
-            self.labelled_idx[sentence_idx] = self.labelled_idx[sentence_idx].union(word_inds)
+            self.index.labelled_idx[sentence_idx] = self.index.labelled_idx[sentence_idx].union(word_inds)
             for w in word_inds:
-                self.unlabelled_idx[sentence_idx].remove(w)
+                self.index.unlabelled_idx[sentence_idx].remove(w)
 
         print(f"Added {j} words to index mapping")
         return temp_score_list
 
-    def get_all_scores(self, model):
+    def get_all_scores(self):
         """
         Score unlabelled instances in terms of their suitability to be labelled next.
         Add the highest scoring instance indices in the dataset to self.labelled_idx
@@ -178,21 +181,23 @@ class ActiveLearningAgent:
         sentence_scores = {}
 
         print("\nUpdating indices")
-        for batch_index in tqdm(self.unlabelled_batch_indices):
-            # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter for functionality
-            sentences, tokens, _, lengths, kl_mask = get_batch(batch_index, self.train_set, self.device)
-            word_scores = self.acquisition.score(sentences, tokens, model, lengths)
+        for batch_index in tqdm(self.unlabelled_set):
+            # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter
+            # for functionality
+            batch = [self.train_set[j] for j in batch_index]
+            sentences, tokens, _, lengths = self.helper.get_batch(batch, self.device)
+            word_scores = self.acquisition.score(sentences=sentences, sentence_lengths=lengths, tokens=tokens)
             for i, b in enumerate(batch_index):
                 sentence_scores[b] = [
-                    float(word_scores[i][j]) if j in self.unlabelled_idx[b] else None
+                    float(word_scores[i][j]) if j in self.index.unlabelled_idx[b] else None
                     for j in range(lengths[i])
                 ]  # scores of unlabelled words --> float, scores of labelled words --> None
 
         return sentence_scores
 
-    def update_indices(self, model):
+    def update_indices(self):
 
-        sentence_scores = self.get_all_scores(model)
+        sentence_scores = self.get_all_scores()
         temp_score_list = self.extend_indices(sentence_scores)
 
         return sentence_scores, temp_score_list
@@ -201,7 +206,7 @@ class ActiveLearningAgent:
         unlabelled_sentences = set()
         labelled_sentences = set()
 
-        print("\nCreating XX")
+        print("\nCreating extended dataset samplers")
 
         for i in tqdm(range(len(self.train_set))):
             if self.index.is_partially_labelled(i):
@@ -221,9 +226,9 @@ class ActiveLearningAgent:
     def __iter__(self):
         # DONT FORGET: DO self.selector.get_batch on self.train_data
         return (
-            self.labelled_batch_indices[i]
-            for i in torch.randperm(len(self.labelled_batch_indices))
+            self.labelled_set[i]
+            for i in torch.randperm(len(self.labelled_set))
         )
 
     def __len__(self):
-        return len(self.labelled_batch_indices)
+        return len(self.labelled_set)

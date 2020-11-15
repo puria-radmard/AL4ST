@@ -5,22 +5,28 @@ from active_learning.selector import WordWindowSelector, FullSentenceSelector
 
 
 def configure_al_agent(args, device, model, train_set, helper):
+
     round_size = int(args.roundsize)
 
-    if args.window != -1:
-        selector = WordWindowSelector(window_size=args.window)
+    if args.acquisition in ['lc']:
+        average = False
     else:
-        selector = FullSentenceSelector(helper)
+        average = True
+
+    if args.window != -1:
+        selector = WordWindowSelector(helper=helper, average=average, window_size=args.window)
+    else:
+        selector = FullSentenceSelector(helper, average=average)
 
     if args.acquisition == 'baseline' and args.initprop != 1.0:
         raise ValueError("To run baseline, you must set initprop == 1.0")
 
     if args.acquisition == 'rand' or args.acquisition == 'baseline':
-        acquisition_class = RandomBaselineAcquisition()
-    elif args.acquisition == 'lc':
-        acquisition_class = LowestConfidenceAcquisition()
+        acquisition_class = RandomBaselineAcquisition(model)
+    elif args.acquisition == 'lc' or args.acquisition == 'mnlp':
+        acquisition_class = LowestConfidenceAcquisition(model)
     elif args.acquisition == 'maxent':
-        acquisition_class = MaximumEntropyAcquisition()
+        acquisition_class = MaximumEntropyAcquisition(model)
     elif args.acquisition == 'bald':
         acquisition_class = BALDAcquisition()
     else:
@@ -32,7 +38,7 @@ def configure_al_agent(args, device, model, train_set, helper):
         selector_class=selector,
         round_size=round_size,
         batch_size=args.batch_size,
-        model=model,
+        helper=helper,
         device=device
     )
 

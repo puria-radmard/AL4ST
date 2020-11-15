@@ -1,16 +1,30 @@
 import torch
 
+class Selector:
 
-class FullSentenceSelector:
-
-    def __init__(self, helper):
+    def __init__(self, helper, average):
         self.helper = helper
+        self.average = average
+
+    def joint_score_aggregation(self, scores_list):
+        """
+        Standard score aggregation where word-wise scores are added or averaged
+        """
+        sentence_score = sum(scores_list)
+        if self.average:
+            sentence_score /= len(scores_list)
+        return sentence_score
+
+
+class FullSentenceSelector(Selector):
+
+    def __init__(self, helper, average):
+        super().__init__(helper=helper, average=average)
 
     def score_aggregation(self, scores_list):
         # Just take the per-word normalised score list.
         # This is the average score of each word for the whole sentence
-        sentence_score = sum(scores_list) / len(scores_list)
-        return sentence_score
+        return self.joint_score_aggregation(scores_list)
 
     def score_extraction(self, scores_list):
         """
@@ -30,19 +44,19 @@ class FullSentenceSelector:
         No model predictions required!
         KL mask is all zeros, since everything in the sentence is labelled, therefore one hot encoded
         """
-        return self.helper.get_batch(batch)
+        return self.helper.get_batch(batch, agent.device)
 
 
-class WordWindowSelector(FullSentenceSelector):
+class WordWindowSelector(Selector):
 
-    def __init__(self, window_size, **kwargs):
+    def __init__(self, helper, average, window_size):
+        super().__init__(helper=helper, average=average)
         self.window_size = window_size
 
     def score_aggregation(self, scores_list):
         # Just take the per-word normalised score list.
         # This is the average score of each word for the whole sentence
-        sentence_score = sum(scores_list) / len(scores_list)
-        return sentence_score
+        return self.joint_score_aggregation(scores_list)
 
     def score_extraction(self, scores_list):
         """
@@ -76,8 +90,9 @@ class WordWindowSelector(FullSentenceSelector):
         If the word is used in training and appears in self.labelled_idx, this is just one hot encoding
         else, it is the probability distribution that the most latest model has predicted
         """
+        # TODO: Fix this for new version
 
-        batch = [al_agent.train_data[idx] for idx in batch_indices]
+        batch = [al_agent.train_set[idx] for idx in batch_indices]
         sentences, tokens, tags = zip(*batch)
 
         padded_sentences, lengths = pad_packed_sequence(
