@@ -17,7 +17,6 @@ class EarlyStopper:
         self.patience = patience
         # self.maximise = maximise
         self.model_state_dict = None
-        self.model_state_dict_epoch = 0
         self.model = model
         self.scores = []
         self.min_score = float('inf')
