@@ -500,7 +500,7 @@ def load_dataset(path):
     relation_labels = Index()
     relation_labels.load(f"{path}/relation_labels.txt")
 
-    train_data = load(f"{path}/train.pk")[:1000]
+    train_data = load(f"{path}/train.pk")[:100]
     test_data = load(f"{path}/test.pk")
 
     word_embeddings = np.load(f"{path}/word2vec.vectors.npy")

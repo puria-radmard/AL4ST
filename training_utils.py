@@ -25,11 +25,12 @@ class EarlyStopper:
     def is_overfitting(self, score):
         scores = self.scores
         if len(scores) < self.patience:
+            self.scores.append(score)
             return False
 
         if score < self.min_score:
             self.model_state_dict = self.model.state_dict()
-            self.min_score = 0
+            self.min_score = score
 
         scores.append(score)
         all_increasing = True
