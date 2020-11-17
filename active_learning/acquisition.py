@@ -24,10 +24,10 @@ class LowestConfidenceAcquisition(Acquisition):
     def __init__(self, model):
         super().__init__(model=model)
 
-    def score(self, sentences, sentence_lengths, tokens):
+    def score(self, sentences, lengths, tokens):
         y_hat = self.model(sentences, tokens)  # logits (batch_size x sent_length x num_tags [193])
         scores = -y_hat.max(dim=-1).values  # negative highest logits (batch_size x sent_length)
-        return [scores[i, :length].reshape(-1) for i, length in enumerate(sentence_lengths)]
+        return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
 
 
 class MaximumEntropyAcquisition(Acquisition):
@@ -35,10 +35,10 @@ class MaximumEntropyAcquisition(Acquisition):
     def __init__(self, model):
         super().__init__(model=model)
 
-    def score(self, sentences, sentence_lengths, tokens):
+    def score(self, sentences, lengths, tokens):
         y_hat = self.model(sentences, tokens)  # logits (batch_size x sent_length x num_tags [193])
         scores = np.sum(-y_hat * np.exp(y_hat), dim=-1)  # entropies of shape (batch_size x sent_length)
-        return [scores[i, :length].reshape(-1) for i, length in enumerate(sentence_lengths)]
+        return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
 
 
 class BALDAcquisition(Acquisition):

@@ -207,7 +207,7 @@ class ActiveLearningAgent:
             # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter
             # for functionality
             batch = [self.train_set[i] for i in batch_index]
-            sentences, tokens, _, lengths = self.helper.get_batch(batch)
+            sentences, tokens, _, lengths = [a.to(self.device) for a in self.helper.get_batch(batch)]
             batch_scores = self.acquisition.score(sentences=sentences, lengths=lengths, tokens=tokens)
 
             for j, i in enumerate(batch_index):

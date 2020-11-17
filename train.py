@@ -4,6 +4,7 @@ import logging
 import os
 import time
 
+import torch
 from torch import optim
 from tqdm import tqdm
 
@@ -267,7 +268,7 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
 
 
 # NOT CHANGED BY AL
-def evaluate(model, data_sampler, dataset, helper, tag_set, criterion):
+def evaluate(model, data_sampler, dataset, helper, tag_set, criterion, device):
     model.eval()
     total_loss = 0
     count = 0
@@ -277,7 +278,7 @@ def evaluate(model, data_sampler, dataset, helper, tag_set, criterion):
     with torch.no_grad():
         for batch_indices in data_sampler:
             batch = [dataset[j] for j in batch_indices]
-            sentences, tokens, targets, lengths = helper.get_batch(batch)
+            sentences, tokens, targets, lengths = [a.to(device) for a in helper.get_batch(batch)]
 
             output = model(sentences, tokens)
             tp, tp_fp, tp_fn = measure(output, targets, lengths, tag_set)
@@ -332,9 +333,9 @@ def train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, 
         logging.info('beginning evaluation')
         val_loss, val_precision, val_recall, val_f1 = \
             evaluate(model, GroupBatchRandomSampler(val_data_groups, args.batch_size, drop_last=False), val_set,
-                     helper, tag_set, criterion)
+                     helper, tag_set, criterion, device)
         train_loss, train_precision, train_recall, train_f1 = \
-            evaluate(model, agent.labelled_set, agent.train_set, helper, tag_set, criterion)
+            evaluate(model, agent.labelled_set, agent.train_set, helper, tag_set, criterion, device)
 
         elapsed = time.time() - start_time
         logging.info(
@@ -413,7 +414,7 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
         )
 
     with open(
-            os.path.join(round_dir, f"sentence_prop-{round}.tsv"), "wt", encoding="utf-8"
+            os.path.join(round_dir, f"sentence_prop-{round_num}.tsv"), "wt", encoding="utf-8"
     ) as f:
 
         f.write("Proportions of sentences in words that have been manually labelled \n")
@@ -500,7 +501,7 @@ def load_dataset(path):
     relation_labels = Index()
     relation_labels.load(f"{path}/relation_labels.txt")
 
-    train_data = load(f"{path}/train.pk")[:100]
+    train_data = load(f"{path}/train.pk")
     test_data = load(f"{path}/test.pk")
 
     word_embeddings = np.load(f"{path}/word2vec.vectors.npy")
@@ -579,7 +580,7 @@ def active_learning_train(args):
         # Run on test data
         test_loss, test_precision, test_recall, test_f1 = evaluate(
             model, GroupBatchRandomSampler(test_data_groups, args.batch_size, drop_last=False), test_set, helper,
-            tag_set, criterion)
+            tag_set, criterion, device)
 
         logging.info(
             "| end of training | test loss {:5.4f} | prec {:5.4f} "
