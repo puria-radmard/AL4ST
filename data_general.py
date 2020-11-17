@@ -8,7 +8,7 @@ import pandas as pd
 def make_vocab_txt(files: List[str], col_names: List[str], token_col: str, target_file: str = "vocab.txt"):
     for filename in files:
 
-        df = pd.read_csv(filename, sep='\t', skip_blank_lines=False, names=col_names)
+        df = pd.read_csv(filename, sep='\t', skip_blank_lines=False, names=col_names, error_bad_lines=False)
 
         # Right now we do counts on both train and test, might want to change this/migth not make difference
         # test file definitely needs fixing
@@ -26,6 +26,7 @@ def make_vocab_txt(files: List[str], col_names: List[str], token_col: str, targe
 
 
 def construct_data_dictionary(sentence_df: pd.DataFrame, token_col: str, label_col: str):
+
     sentence_df = sentence_df[1:].reset_index(inplace=False)
     label_list = [
             {
@@ -51,7 +52,7 @@ def make_dataset_jsons(file_mappings: Dict[str, str], col_names: List[str], toke
 
         with open(fout) as j_file:
 
-            df = pd.read_csv(fin, sep='\t', skip_blank_lines=False, names=col_names)
+            df = pd.read_csv(fin, sep='\t', skip_blank_lines=False, names=col_names, error_bad_lines=False)
             sentence_list = np.split(df, df[df.isnull().all(1)].index)
 
             for sentence_df in sentence_list:
