@@ -8,7 +8,7 @@ import pandas as pd
 def make_vocab_txt(files: List[str], col_names: List[str], token_col: str, target_file: str = "vocab.txt"):
     for filename in files:
 
-        df = pd.read_csv(filename, sep='\t', skip_blank_lines=False, names=col_names, error_bad_lines=False)
+        df = pd.read_csv(filename, sep='\t', skip_blank_lines=False, names=col_names, error_bad_lines=False, engine='python')
 
         # Right now we do counts on both train and test, might want to change this/migth not make difference
         # test file definitely needs fixing
@@ -54,7 +54,7 @@ def make_dataset_jsons(file_mappings: Dict[str, str], col_names: List[str], toke
 
         with open(fout, "w") as j_file:
 
-            df = pd.read_csv(fin, sep='\t', skip_blank_lines=False, names=col_names, error_bad_lines=False)
+            df = pd.read_csv(fin, sep='\t', skip_blank_lines=False, names=col_names, error_bad_lines=False, engine='python')
             sentence_list = np.split(df, df[df.isnull().all(1)].index)
 
             for sentence_df in sentence_list:
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     col_names = ["tokens", "POS", "LING", "NER"]
     token_col = "tokens"
     dataset_json_mappings = {
-        #'data/OntoNotes-5.0/onto.test.ner': 'data/OntoNotes-5.0/POS/test.json',
+        'data/OntoNotes-5.0/onto.test.ner': 'data/OntoNotes-5.0/POS/test.json',
         'data/OntoNotes-5.0/onto.train.ner': 'data/OntoNotes-5.0/POS/train.json'
     }
     corpus_files=list(dataset_json_mappings.keys())
