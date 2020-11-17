@@ -1,6 +1,6 @@
 import logging
 from typing import List, Dict
-
+import json
 import numpy as np
 import pandas as pd
 
@@ -45,7 +45,7 @@ def construct_data_dictionary(sentence_df: pd.DataFrame, token_col: str, label_c
         "entityMentions": label_list
     }
 
-    return data_dict
+    return json.dumps(data_dict)
 
 
 def make_dataset_jsons(file_mappings: Dict[str, str], col_names: List[str], token_col: str, label_col: str):
@@ -64,7 +64,7 @@ def make_dataset_jsons(file_mappings: Dict[str, str], col_names: List[str], toke
 
                 data_dictionary = construct_data_dictionary(sentence_df, token_col, label_col)
 
-                j_file.write(str(data_dictionary))
+                j_file.write(data_dictionary)
                 j_file.write('\n')
 
 
