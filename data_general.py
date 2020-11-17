@@ -45,6 +45,9 @@ def construct_data_dictionary(sentence_df: pd.DataFrame, token_col: str, label_c
         "entityMentions": label_list
     }
 
+    return data_dict
+
+
 def make_dataset_jsons(file_mappings: Dict[str, str], col_names: List[str], token_col: str, label_col: str):
 
     for fin, fout in file_mappings.items():
