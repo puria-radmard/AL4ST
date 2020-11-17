@@ -18,7 +18,7 @@ def make_vocab_txt(files: List[str], col_names: List[str], token_col: str, targe
         token_counter = dict(zip(tokens, counts))
         token_counter = {k: v for k, v in sorted(token_counter.items(), key=lambda item: item[1], reverse=True)}
 
-        with open(target_file) as vocab_txt:
+        with open(target_file, "w") as vocab_txt:
 
             # This needs some fixing/purging
             for token, count in token_counter.items():
@@ -36,21 +36,20 @@ def construct_data_dictionary(sentence_df: pd.DataFrame, token_col: str, label_c
             } for i, label in enumerate(sentence_df[label_col])
         if label != 'O'
     ]
-
+    
     data_dict = {
-        "sentText": " ".join(sentence_df[token_col]),
+        "sentText": " ".join([str(a) for a in sentence_df[token_col]]),
         "articleId": None,
         "sentId": "1",
         "relationMentions": [],
         "entityMentions": label_list
     }
 
-
 def make_dataset_jsons(file_mappings: Dict[str, str], col_names: List[str], token_col: str, label_col: str):
 
     for fin, fout in file_mappings.items():
 
-        with open(fout) as j_file:
+        with open(fout, "w") as j_file:
 
             df = pd.read_csv(fin, sep='\t', skip_blank_lines=False, names=col_names, error_bad_lines=False)
             sentence_list = np.split(df, df[df.isnull().all(1)].index)
@@ -71,7 +70,7 @@ if __name__ == '__main__':
     col_names = ["tokens", "POS", "LING", "NER"]
     token_col = "tokens"
     dataset_json_mappings = {
-        'data/OntoNotes-5.0/onto.test.ner': 'data/OntoNotes-5.0/POS/test.json',
+        #'data/OntoNotes-5.0/onto.test.ner': 'data/OntoNotes-5.0/POS/test.json',
         'data/OntoNotes-5.0/onto.train.ner': 'data/OntoNotes-5.0/POS/train.json'
     }
     corpus_files=list(dataset_json_mappings.keys())
