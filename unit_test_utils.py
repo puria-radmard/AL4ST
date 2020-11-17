@@ -1,7 +1,7 @@
 import torch
 import random
 from torch import nn
-from active_learning import *
+from active_learning.agent import *
 
 NUM_SENTENCES_TRAIN = 500
 NUM_SENTENCES_TEST = 100

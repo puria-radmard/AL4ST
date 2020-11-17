@@ -1,4 +1,6 @@
 import json
+import sys
+import os
 from utils import *
 
 
@@ -117,9 +119,13 @@ def prepare_data_set(
 
 
 if __name__ == "__main__":
+
+    root_dir = sys.argv[1] # Fix this later
+    # e.g. "data/NYT_CoType"
+
     charset = Charset()
     vocab = Vocabulary()
-    vocab.load("data/NYT_CoType/vocab.txt")
+    vocab.load(os.path.join(root_dir, "vocab.txt"))
     relation_labels = Index()
     entity_labels = Index()
     tag_set = Index()
@@ -129,7 +135,7 @@ if __name__ == "__main__":
 
         print("Starting data.py")
         train = []
-        with open("data/NYT_CoType/train.json", "rt", encoding="utf-8") as fin:
+        with open(os.path.join(root_dir, "train.json"), "rt", encoding="utf-8") as fin:
             res = prepare_data_set(
                 fin,
                 charset,
@@ -141,19 +147,19 @@ if __name__ == "__main__":
                 fout,
             )
             print("# of overlaps in train data: {}".format(res))
-        save(train, "data/NYT_CoType/train.pk")
+        save(train, os.path.join(root_dir, "train.pk"))
 
         test = []
-        with open("data/NYT_CoType/test.json", "rt", encoding="utf-8") as fin:
+        with open(os.path.join(root_dir, "test.json"), "rt", encoding="utf-8") as fin:
             res = prepare_data_set(
                 fin, charset, vocab, relation_labels, entity_labels, tag_set, test, fout
             )
             print("# of overlaps in test data: {}".format(res))
-        save(test, "data/NYT_CoType/test.pk")
+        save(test, os.path.join(root_dir, "test.pk"))
 
-    relation_labels.save("data/NYT_CoType/relation_labels.txt")
-    entity_labels.save("data/NYT_CoType/entity_labels.txt")
-    tag_set.save("data/NYT_CoType/tag2id.txt")
+    relation_labels.save(os.path.join(root_dir, "relation_labels.txt"))
+    entity_labels.save(os.path.join(root_dir, "entity_labels.txt"))
+    tag_set.save(os.path.join(root_dir, "tag2id.txt"))
 
 # of overlaps in train data: 42924
 # of overlaps in test data: 18

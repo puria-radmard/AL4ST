@@ -414,7 +414,7 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
         )
 
     with open(
-            os.path.join(round_dir, f"sentence_prop-{round}.tsv"), "wt", encoding="utf-8"
+            os.path.join(round_dir, f"sentence_prop-{round_num}.tsv"), "wt", encoding="utf-8"
     ) as f:
 
         f.write("Proportions of sentences in words that have been manually labelled \n")
