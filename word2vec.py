@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 from gensim.models.word2vec import LineSentence, Word2Vec
 
 
