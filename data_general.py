@@ -76,12 +76,14 @@ if __name__ == '__main__':
     }
     corpus_files=list(dataset_json_mappings.keys())
     label_col = "POS"
+    vocab_txt = 'data/OntoNotes-5.0/POS/vocab.txt'
 
     logging.info("Started making vocab.txt")
     make_vocab_txt(
         files=corpus_files,
         col_names=col_names,
-        token_col=token_col
+        token_col=token_col,
+        target_file=vocab_txt
     )
     logging.info("Finished making vocab.txt")
 
@@ -90,6 +92,6 @@ if __name__ == '__main__':
         file_mappings=dataset_json_mappings,
         col_names=col_names,
         token_col=token_col,
-        label_col=label_col
+        label_col=label_col,
     )
     logging.info("Finished making dataset jsons")
