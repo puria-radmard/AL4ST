@@ -105,7 +105,7 @@ class WordWindowSelector(Selector):
         padded_tokens = padded_tokens.to(al_agent.device)
         model_log_probs = model(padded_sentences, padded_tokens)
 
-        padded_tags = torch.nn.functional.one_hot(padded_tags, num_classes=193).float()  # MAKE NUM CLASSES A PARAMETER?
+        padded_tags = torch.nn.functional.one_hot(padded_tags, num_classes=len(self.helper.tag_set)).float()  # MAKE NUM CLASSES A PARAMETER?
         kl_mask = torch.zeros(padded_tags.shape[:2]).to(al_agent.device)
 
         # Fill in the words that have not been queried

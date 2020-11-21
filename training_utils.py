@@ -111,31 +111,7 @@ class GroupBatchRandomSampler(object):
         return len(self.batch_indices)
 
 
-def get_triplets(tags, tag_set):
-    temp = {}
-    triplets = []
-    for idx, tag in enumerate(tags):
-        if tag == tag_set["O"]:
-            continue
-        pos, relation_label, role = tag_set[tag].split("-")
-        if pos == "B" or pos == "S":
-            if relation_label not in temp:
-                temp[relation_label] = [[], []]
-            temp[relation_label][int(role) - 1].append(idx)
-    for relation_label in temp:
-        role1, role2 = temp[relation_label]
-        if role1 and role2:
-            len1, len2 = len(role1), len(role2)
-            if len1 > len2:
-                for e2 in role2:
-                    idx = np.argmin([abs(e2 - e1) for e1 in role1])
-                    e1 = role1[idx]
-                    triplets.append((e1, relation_label, e2))
-                    del role1[idx]
-            else:
-                for e1 in role1:
-                    idx = np.argmin([abs(e2 - e1) for e2 in role2])
-                    e2 = role2[idx]
-                    triplets.append((e1, relation_label, e2))
-                    del role2[idx]
-    return triplets
+
+
+# MAKE CONFIG FILES IN DATA ROOT
+# WRITE NEW F1 AND CHOOSE NEW TAG SET BASED ON THAT

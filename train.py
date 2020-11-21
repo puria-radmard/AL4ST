@@ -191,29 +191,6 @@ def make_root_dir(args):
     return root_dir
 
 
-def measure(output, targets, lengths, tag_set):
-    assert output.size(0) == targets.size(0) and targets.size(0) == lengths.size(0)
-    tp = 0
-    tp_fp = 0
-    tp_fn = 0
-    batch_size = output.size(0)
-    output = torch.argmax(output, dim=-1)
-    targets = torch.argmax(targets, dim=-1)
-    for i in range(batch_size):
-        length = lengths[i]
-        out = output[i][:length].tolist()
-        target = targets[i][:length].tolist()
-        out_triplets = get_triplets(out, tag_set)
-        tp_fp += len(out_triplets)
-        target_triplets = get_triplets(target, tag_set)
-        tp_fn += len(target_triplets)
-        for target_triplet in target_triplets:
-            for out_triplet in out_triplets:
-                if out_triplet == target_triplet:
-                    tp += 1
-    return tp, tp_fp, tp_fn
-
-
 def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, args):
     model.train()
     total_loss = 0
@@ -223,8 +200,7 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
     for idx, batch_indices in enumerate(sampler):
 
         model.eval()
-        sentences, tokens, targets, lengths = \
-            [a.to(device) for a in agent.get_batch(idx)]
+        sentences, tokens, targets, lengths = [a.to(device) for a in agent.get_batch(idx)]
         model.train()
 
         optimizer.zero_grad()
@@ -266,9 +242,8 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
             total_loss = 0
             count = 0
 
-
 # NOT CHANGED BY AL
-def evaluate(model, data_sampler, dataset, helper, tag_set, criterion, device):
+def evaluate(model, data_sampler, dataset, helper, criterion, device):
     model.eval()
     total_loss = 0
     count = 0
@@ -281,8 +256,7 @@ def evaluate(model, data_sampler, dataset, helper, tag_set, criterion, device):
             sentences, tokens, targets, lengths = [a.to(device) for a in helper.get_batch(batch)]
 
             output = model(sentences, tokens)
-            tp, tp_fp, tp_fn = measure(output, targets, lengths, tag_set)
-            # tp, tp_fp, tp_fn = 5,5,5
+            tp, tp_fp, tp_fn = helper.measure(output, targets, lengths)
 
             tp_total += tp
             tp_fp_total += tp_fp
@@ -333,9 +307,9 @@ def train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, 
         logging.info('beginning evaluation')
         val_loss, val_precision, val_recall, val_f1 = \
             evaluate(model, GroupBatchRandomSampler(val_data_groups, args.batch_size, drop_last=False), val_set,
-                     helper, tag_set, criterion, device)
+                     helper, criterion, device)
         train_loss, train_precision, train_recall, train_f1 = \
-            evaluate(model, agent.labelled_set, agent.train_set, helper, tag_set, criterion, device)
+            evaluate(model, agent.labelled_set, agent.train_set, helper, criterion, device)
 
         elapsed = time.time() - start_time
         logging.info(
@@ -487,6 +461,16 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
     logging.info(f"finished logging round {round_num}")
 
 
+# TODO: Make this properly, maybe a config file in the dataset path
+def get_measure_type(path):
+    if "NYT_CoType" in path:
+        return 'relations'
+    elif "OntoNotes-5.0" in path:
+        return 'entities'
+    else:
+        raise NotImplementedError
+
+
 def load_dataset(path):
     charset = Charset()
 
@@ -496,10 +480,18 @@ def load_dataset(path):
     tag_set = Index()
     tag_set.load(f"{path}/tag2id.txt")
 
-    helper = Helper(vocab, tag_set, charset)
+    measure_type = get_measure_type(path)
 
-    relation_labels = Index()
-    relation_labels.load(f"{path}/relation_labels.txt")
+    tag_set = Index()
+    if measure_type == 'relations':
+        tag_set.load(f"{path}/tag2id.txt")
+    elif measure_type == 'entities':
+        tag_set.load(f"{path}/entity_labels.txt")
+
+    helper = Helper(vocab, tag_set, charset, measure_type=measure_type)
+
+    # relation_labels = Index()
+    # relation_labels.load(f"{path}/relation_labels.txt")
 
     train_data = load(f"{path}/train.pk")
     test_data = load(f"{path}/test.pk")
@@ -569,7 +561,7 @@ def active_learning_train(args):
     agent.init(int(len(train_set) * args.initprop))
 
     # logger
-    root_dir = make_root_dir(args)
+    # root_dir = make_root_dir(args)
 
     round_num = 0
     for _ in agent:
@@ -580,14 +572,14 @@ def active_learning_train(args):
         # Run on test data
         test_loss, test_precision, test_recall, test_f1 = evaluate(
             model, GroupBatchRandomSampler(test_data_groups, args.batch_size, drop_last=False), test_set, helper,
-            tag_set, criterion, device)
+            criterion, device)
 
         logging.info(
             "| end of training | test loss {:5.4f} | prec {:5.4f} "
             "| rec {:5.4f} | f1 {:5.4f} |".format(test_loss, test_precision, test_recall, test_f1)
         )
 
-        log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1, round_num)
+        # log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1, round_num)
 
         round_num += 1
 

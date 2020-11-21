@@ -1,5 +1,5 @@
 import numpy as np
-
+import torch
 
 class Acquisition:
 
@@ -25,7 +25,7 @@ class LowestConfidenceAcquisition(Acquisition):
         super().__init__(model=model)
 
     def score(self, sentences, lengths, tokens):
-        y_hat = self.model(sentences, tokens)  # logits (batch_size x sent_length x num_tags [193])
+        y_hat = self.model(sentences, tokens).detach()  # logits (batch_size x sent_length x num_tags [193])
         scores = -y_hat.max(dim=-1).values  # negative highest logits (batch_size x sent_length)
         return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
 
@@ -36,8 +36,8 @@ class MaximumEntropyAcquisition(Acquisition):
         super().__init__(model=model)
 
     def score(self, sentences, lengths, tokens):
-        y_hat = self.model(sentences, tokens)  # logits (batch_size x sent_length x num_tags [193])
-        scores = np.sum(-y_hat * np.exp(y_hat), dim=-1)  # entropies of shape (batch_size x sent_length)
+        y_hat = self.model(sentences, tokens).detach()  # logits (batch_size x sent_length x num_tags [193])
+        scores = torch.sum(-y_hat * torch.exp(y_hat), dim=-1)  # entropies of shape (batch_size x sent_length)
         return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
 
 

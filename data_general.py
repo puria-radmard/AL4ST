@@ -3,29 +3,29 @@ from typing import List, Dict
 import json
 import numpy as np
 import pandas as pd
+from collections import Counter
+from tqdm import tqdm
+
+available_chars = [
+    '!', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8',
+    '9', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+    'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '~', '·', '▲', '・', " "
+]
 
 
-def make_vocab_txt(files: List[str], col_names: List[str], token_col: str, target_file: str = "vocab.txt"):
-    for filename in files:
+def filter_text(text):
 
-        df = pd.read_csv(filename, sep='\t', skip_blank_lines=False, names=col_names, error_bad_lines=False, engine='python')
+    for character in text:
+        if character.lower() not in available_chars:
+            return False
 
-        # Right now we do counts on both train and test, might want to change this/migth not make difference
-        # test file definitely needs fixing
-        token_series = df[token_col].dropna().to_numpy()
-        tokens, counts = np.unique(token_series, return_counts=True)
+    if '\t' in text or len(text) == 0:
+        return False
 
-        token_counter = dict(zip(tokens, counts))
-        token_counter = {k: v for k, v in sorted(token_counter.items(), key=lambda item: item[1], reverse=True)}
-
-        with open(target_file, "w") as vocab_txt:
-
-            # This needs some fixing/purging
-            for token, count in token_counter.items():
-                vocab_txt.write(f"{token}\t{count}\n")
+    return True
 
 
-def construct_data_dictionary(sentence_df: pd.DataFrame, token_col: str, label_col: str):
+def construct_data_dictionary_string(sentence_df: pd.DataFrame, token_col: str, label_col: str):
 
     sentence_df = sentence_df[1:].reset_index(inplace=False)
     label_list = [
@@ -45,10 +45,21 @@ def construct_data_dictionary(sentence_df: pd.DataFrame, token_col: str, label_c
         "entityMentions": label_list
     }
 
-    return json.dumps(data_dict)
+    # BASIC PURGE
+    if not filter_text(data_dict['sentText']):
+        return 'ERROR'
+    else:
+        return json.dumps(data_dict)
 
 
-def make_dataset_jsons(file_mappings: Dict[str, str], col_names: List[str], token_col: str, label_col: str):
+def make_dataset_jsons(
+        file_mappings: Dict[str, str],
+        col_names: List[str],
+        token_col: str,
+        label_col: str,
+        target_vocab_file: str,
+    ):
+    token_counters = Counter({})
 
     for fin, fout in file_mappings.items():
 
@@ -57,15 +68,24 @@ def make_dataset_jsons(file_mappings: Dict[str, str], col_names: List[str], toke
             df = pd.read_csv(fin, sep='\t', skip_blank_lines=False, names=col_names, error_bad_lines=False, engine='python')
             sentence_list = np.split(df, df[df.isnull().all(1)].index)
 
-            for sentence_df in sentence_list:
+            for sentence_df in tqdm(sentence_list):
 
-                if not len(sentence_df):
+                data_dictionary_string = construct_data_dictionary_string(sentence_df, token_col, label_col)
+                if data_dictionary_string == "ERROR":
                     continue
 
-                data_dictionary = construct_data_dictionary(sentence_df, token_col, label_col)
+                j_file.write(f"{data_dictionary_string}\n")
 
-                j_file.write(data_dictionary)
-                j_file.write('\n')
+                token_series = sentence_df[token_col].dropna().map(lambda x: x.lower()).to_numpy()
+                tokens, counts = np.unique(token_series, return_counts=True)
+                d = {k: v for k, v in dict(zip(tokens, counts)).items() if filter_text(k)}
+                token_counters += Counter(d)
+
+    token_counters = {k: v for k, v in sorted(token_counters.items(), key=lambda item: item[1], reverse=True)}
+
+    with open(target_vocab_file, "w") as vocab_txt:
+        for token, count in token_counters.items():
+            vocab_txt.write(f"{token}\t{count}\n")
 
 
 if __name__ == '__main__':
@@ -73,21 +93,15 @@ if __name__ == '__main__':
     col_names = ["tokens", "POS", "LING", "NER"]
     token_col = "tokens"
     dataset_json_mappings = {
-        'data/OntoNotes-5.0/onto.test.ner': 'data/OntoNotes-5.0/POS/test.json',
-        'data/OntoNotes-5.0/onto.train.ner': 'data/OntoNotes-5.0/POS/train.json'
+        '/home/radmard/repos/AL4ST/data/OntoNotes-5.0/onto.test.ner':
+            '/home/radmard/repos/AL4ST/data/OntoNotes-5.0/NER/test.json',
+        '/home/radmard/repos/AL4ST/data/OntoNotes-5.0/onto.train.ner':
+            '/home/radmard/repos/AL4ST/data/OntoNotes-5.0/NER/train.json'
     }
     corpus_files=list(dataset_json_mappings.keys())
-    label_col = "POS"
-    vocab_txt = 'data/OntoNotes-5.0/POS/vocab.txt'
-
-    logging.info("Started making vocab.txt")
-    make_vocab_txt(
-        files=corpus_files,
-        col_names=col_names,
-        token_col=token_col,
-        target_file=vocab_txt
-    )
-    logging.info("Finished making vocab.txt")
+    label_col = "NER"
+    vocab_txt = '/home/radmard/repos/AL4ST/data/OntoNotes-5.0/NER/vocab.txt'
+    tags_txt = '/home/radmard/repos/AL4ST/data/OntoNotes-5.0/NER/tag2id.txt'
 
     logging.info("Started making dataset jsons")
     make_dataset_jsons(
@@ -95,5 +109,6 @@ if __name__ == '__main__':
         col_names=col_names,
         token_col=token_col,
         label_col=label_col,
+        target_vocab_file=vocab_txt,
     )
     logging.info("Finished making dataset jsons")
