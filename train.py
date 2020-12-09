@@ -1,7 +1,7 @@
 import argparse
 import datetime
-import logging
 import os
+import sys
 import time
 
 import torch
@@ -39,8 +39,9 @@ def parse_args():
         description="Joint Extraction of Entities and Relations"
     )
     parser.add_argument(
-        "-W", "--window", type=int, help="size of window acquired each time in words. set -1 for full sentence",
-        required=False, default=-1
+        "-W", "--window", nargs='+',
+        help="size of window acquired each time in words. set -1 for full sentence, two for range",
+        required=True
     )
     parser.add_argument(
         "-A", "--acquisition", type=str, help="acquisition function used by agent. choose from 'rand' and 'lc'",
@@ -49,29 +50,37 @@ def parse_args():
     parser.add_argument(
         "-I", "--initprop", type=float,
         help="proportion of sentences of training set labelled before first round. [0,1]",
+        default=0.1
+    )
+    parser.add_argument(
+        "-R", "--roundsize", type=int,
+        help="number of words acquired made per round (rounded up to closest possible each round)", default=80000
+    )
+    parser.add_argument(
+        "--beta", type=float, help="Weight (should be in [0,1]) that self-supervised losses are multiplied by",
         required=True
     )
     parser.add_argument(
-        "-D", "--data_path", type=str, default='./data', required=False
+        "-alpha", "--alpha", type=float,
+        help="sub-sequence are normalised by L^-alpha where L is the subsequence length",
+        required=True
     )
     parser.add_argument(
-        "-R", "--roundsize", type=int, help="number of acquisitions made per round (unitless)", required=True
+        "-T", "--temperature", type=float, help="Temperature of scoring annealing. Does not affect W=-1 and beta=0 cases", required=True
     )
-    parser.add_argument(
-        "--earlystopping", type=int, help="number of epochs of F1 decrease before early stopping", default=3
-    )
-    parser.add_argument(
-        "--temperature", type=float, help="Temperature of prediction annealing ", default=1.0
-    )
+    parser.add_argument("-D", "--data_path", type=str, default="/home/radmard/repos/AL4ST/data/OntoNotes-5.0/NER")
     # parser.add_argument(
     #     "--labelthres", type=float, help="proportion of sentence that must be manually labelled before it is used
     #     for training", required = True
     # )
 
     parser.add_argument(
+        "--earlystopping", type=int, help="number of epochs of F1 decrease before early stopping", default=2
+    )
+    parser.add_argument(
         "--batch_size", type=int, default=32, metavar="N", help="batch size (default: 32)"
     )
-    parser.add_argument("--cuda", default=False, action="store_true", help="use CUDA (default: True)")
+    parser.add_argument("--cuda", default=True, action="store_true", help="use CUDA (default: True)")
     parser.add_argument(
         "--dropout",
         type=float,
@@ -141,11 +150,11 @@ def parse_args():
         help="report interval (default: 100)",
     )
     parser.add_argument(
-        "--lr", type=float, default=0.02, help="initial learning rate (default: 4)"
+        "--lr", type=float, default=1, help="initial learning rate (default: 1)"
     )
     parser.add_argument(
-        "--lr_decrease", type=float, default=2,
-        help="learning rate annealing factor on non-improving epochs (default: 2)"
+        "--lr_decrease", type=float, default=1,
+        help="learning rate annealing factor on non-improving epochs (default: 1)"
     )
     parser.add_argument(
         "--optim", type=str, default="SGD", help="optimizer type (default: SGD)"
@@ -167,7 +176,10 @@ def parse_args():
 
 def make_root_dir(args):
     rn = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
-    root_dir = os.path.join('.', f"record-{args.acquisition}-{rn}")
+    root_dir = os.path.join(
+        '.',
+        f"{'-'.join(sys.argv[1:])}--{rn}"
+    )
     os.mkdir(root_dir)
 
     with open(os.path.join(root_dir, "config.txt"), "w") as config_file:
@@ -200,7 +212,7 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
     for idx, batch_indices in enumerate(sampler):
 
         model.eval()
-        sentences, tokens, targets, lengths = [a.to(device) for a in agent.get_batch(idx)]
+        sentences, tokens, targets, lengths, self_supervision_mask = [a.to(device) for a in agent.get_batch(idx)]
         model.train()
 
         optimizer.zero_grad()
@@ -210,7 +222,7 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
         # output = pack_padded_sequence(output, lengths.cpu(), batch_first=True).data
         # targets = pack_padded_sequence(targets, lengths.cpu(), batch_first=True).data
 
-        loss = criterion(output, targets)
+        loss = criterion(output, targets, self_supervision_mask)
         loss.backward()
         if args.clip > 0:
             nn.utils.clip_grad_norm_(model.parameters(), args.clip)
@@ -242,6 +254,7 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
             total_loss = 0
             count = 0
 
+
 # NOT CHANGED BY AL
 def evaluate(model, data_sampler, dataset, helper, criterion, device):
     model.eval()
@@ -262,7 +275,7 @@ def evaluate(model, data_sampler, dataset, helper, criterion, device):
             tp_fp_total += tp_fp
             tp_fn_total += tp_fn
 
-            loss = criterion(output, targets)
+            loss = criterion(output, targets, 1)
             total_loss += loss.item()
 
             count += len(targets)
@@ -270,6 +283,8 @@ def evaluate(model, data_sampler, dataset, helper, criterion, device):
         tp_fp_total = 1
     if tp_fn_total == 0:
         tp_fn_total = 1
+    if count == 0:
+        count = 1
     return (
         total_loss / count,
         tp_total / tp_fp_total,
@@ -278,7 +293,7 @@ def evaluate(model, data_sampler, dataset, helper, criterion, device):
     )
 
 
-def train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, original_lr, criterion, args):
+def train_full(model, device, agent, helper, val_set, val_data_groups, original_lr, criterion, args):
     lr = args.lr
     early_stopper = EarlyStopper(patience=args.earlystopping, model=model)
 
@@ -336,7 +351,6 @@ def train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, 
         if early_stopper.is_overfitting(val_loss):
             break
 
-
     return {
         "num_words": num_words,
         "num_sentences": num_sentences,
@@ -391,23 +405,16 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
             os.path.join(round_dir, f"sentence_prop-{round_num}.tsv"), "wt", encoding="utf-8"
     ) as f:
 
-        f.write("Proportions of sentences in words that have been manually labelled \n")
-        f.write("The remainder of the words in the sentence have been automatically labelled by")
-        f.write("the model before training, as per the threshold argument (if implemented) \n")
-        f.write("\n")
+        f.write("sent_length\tnum_labelled\n")
 
         i = 0
         for sentence_idx, labelled_idx in agent.index.labelled_idx.items():
-            num_labelled = len(labelled_idx)
+
             num_unlabelled = len(agent.index.unlabelled_idx[sentence_idx])
-            prop = num_labelled / (num_labelled + num_unlabelled)
-            f.write(str(prop))
-            i += 1
-            if i % 10 == 0:
-                f.write("\n")
-                i = 0
-            else:
-                f.write("\t")
+            f.write(str(len(labelled_idx) + num_unlabelled))
+            f.write("\t")
+            f.write(str(len(labelled_idx)))
+            f.write("\n")
 
     # with open(
     #         os.path.join(round_dir, f"sentence_labels-{round}"), "wt", encoding="utf-8"
@@ -561,13 +568,14 @@ def active_learning_train(args):
     agent.init(int(len(train_set) * args.initprop))
 
     # logger
-    # root_dir = make_root_dir(args)
+    root_dir = make_root_dir(args)
 
     round_num = 0
     for _ in agent:
+
         original_lr = args.lr
-        round_results = train_full(model, device, agent, helper, val_set, tag_set, val_data_groups, original_lr,
-                                   criterion, args)
+
+        round_results = train_full(model, device, agent, helper, val_set, val_data_groups, original_lr, criterion, args)
 
         # Run on test data
         test_loss, test_precision, test_recall, test_f1 = evaluate(
@@ -579,7 +587,7 @@ def active_learning_train(args):
             "| rec {:5.4f} | f1 {:5.4f} |".format(test_loss, test_precision, test_recall, test_f1)
         )
 
-        # log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1, round_num)
+        log_round(root_dir, round_results, agent, test_loss, test_precision, test_recall, test_f1, round_num)
 
         round_num += 1
 

@@ -1,29 +1,28 @@
 from active_learning.acquisition import RandomBaselineAcquisition, LowestConfidenceAcquisition, \
     MaximumEntropyAcquisition, BALDAcquisition
 from active_learning.agent import ActiveLearningAgent
-from active_learning.selector import WordWindowSelector, SentenceSelector
+from active_learning.selector import FixedWindowSelector, SentenceSelector, VariableWindowSelector
 
 
 def configure_al_agent(args, device, model, train_set, helper):
 
     round_size = int(args.roundsize)
 
-    if args.acquisition in ['lc']:
-        average = False
+    if len(args.window) == 1:
+            selector = SentenceSelector(helper, normalisation_index=args.alpha)
+    elif len(args.window) == 2:
+        selector = VariableWindowSelector(
+            helper=helper, window_range=[int(a) for a in args.window], beta=args.beta, model=model
+        )
     else:
-        average = True
-
-    if args.window != -1:
-        selector = WordWindowSelector(helper=helper, average=average, window_size=args.window)
-    else:
-        selector = SentenceSelector(helper, average=average)
+        raise ValueError(f"Windows must be of one or two size, not {args.window}")
 
     if args.acquisition == 'baseline' and args.initprop != 1.0:
         raise ValueError("To run baseline, you must set initprop == 1.0")
 
-    if args.acquisition == 'rand' or args.acquisition == 'baseline':
+    if args.acquisition in ['rand', 'baseline']:
         acquisition_class = RandomBaselineAcquisition(model)
-    elif args.acquisition == 'lc' or args.acquisition == 'mnlp':
+    elif args.acquisition == 'lc':
         acquisition_class = LowestConfidenceAcquisition(model)
     elif args.acquisition == 'maxent':
         acquisition_class = MaximumEntropyAcquisition(model)

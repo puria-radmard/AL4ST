@@ -35,7 +35,6 @@ class Helper:
 
         return padded_sentences, padded_tokens, padded_tags, lengths
 
-
     def measure(self, output, targets, lengths):
         assert output.size(0) == targets.size(0) and targets.size(0) == lengths.size(0)
         tp = 0

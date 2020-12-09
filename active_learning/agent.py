@@ -133,21 +133,23 @@ class ActiveLearningAgent:
     def get_batch(self, i):
         # Use selector get_batch here as we want to fill things in if needed
         batch = [self.train_set[j] for j in self.labelled_set[i]]
-        return self.selector.get_batch(batch)
+        # The window selector needs the batch indices and index sets
+        return self.selector.get_batch(batch=batch, batch_indices=self.labelled_set[i], agent=self)
 
-    # @staticmethod
-    # def purify_entries(entries):
-    #    """Sort and remove disjoint entries of form [([list, of, word, idx], score), ...]"""
-    #    start_entries = sorted(entries, key=lambda x: x[-1], reverse=True)
-    #    final_entries = []
-    #    highest_idx = set()
-    #    for entry in start_entries:
-    #        if highest_idx.intersection(entry[0]):
-    #            pass
-    #        else:
-    #            highest_idx = highest_idx.union(entry[0])
-    #            final_entries.append(entry)
-    #    return final_entries
+    def select_best(self, window_scores):
+
+        best_windows = []
+        num_words_added = 0
+
+        for window in window_scores:
+            window_range = window[1]
+            window_size = window_range[1] - window_range[0]
+            num_words_added += window_size
+            best_windows.append(window)
+            if num_words_added >= self.round_size:
+                break
+
+        return best_windows
 
     def update_index(self, sentence_scores):
         """
@@ -155,7 +157,7 @@ class ActiveLearningAgent:
         self.labelled_idx.
 
         Input:
-            sentence_scores: {j: [list, of, scores, per, word, None, None]} where None means the word has alread been
+            sentence_scores: {j: [list, of, scores, per, word, nan, nan]} where nan means the word has alread been
             labelled i.e. full list of scores/Nones
         Output:
             No output, but extends self.labelled_idx:
@@ -170,18 +172,21 @@ class ActiveLearningAgent:
 
         window_scores = []
         for i, word_scores in tqdm(sentence_scores.items()):
-            # Skip if already all Nones
+            # Skip if already all labelled
             if self.index.is_labelled(i):
                 continue
             windows = self.selector.score_extraction(word_scores)
             window_scores.extend([(i, window[0], window[1]) for window in windows])
 
         window_scores.sort(key=lambda e: e[-1], reverse=True)
+        best_window_scores = self.select_best(window_scores)
 
-        window_scores = window_scores[:self.round_size]
+        # No more windows of this size left
+        if len(best_window_scores) == len(window_scores):
+            self.selector.reduce_window_size()
 
         n_spent = 0
-        for i, r, _ in window_scores:
+        for i, r, _ in best_window_scores:
             cost = r[1] - r[0]
             self.budget -= cost
             if self.budget < 0:
@@ -248,4 +253,3 @@ class ActiveLearningAgent:
         if self.budget <= 0:
             self.num = -1
         return self.budget
-

@@ -71,11 +71,11 @@ class ModifiedKL(nn.Module):
         # weights of size [1, 1, classes]
         self.weight = weight.reshape(1, 1, -1)
 
-    def forward(self, pred_log_probs, target_probs):
+    def forward(self, pred_log_probs, target_probs, self_supervision_mask):
         # loss of size [batch, length, classes]
         loss = - pred_log_probs * target_probs
         loss *= self.weight
-
+        loss *= self_supervision_mask
         # loss of size [batch, length]
         return loss.sum()
 
@@ -109,9 +109,3 @@ class GroupBatchRandomSampler(object):
 
     def __len__(self):
         return len(self.batch_indices)
-
-
-
-
-# MAKE CONFIG FILES IN DATA ROOT
-# WRITE NEW F1 AND CHOOSE NEW TAG SET BASED ON THAT

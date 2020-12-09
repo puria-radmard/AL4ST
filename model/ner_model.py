@@ -237,7 +237,7 @@ class Model(nn.Module):
         self.init_weights()
         self.T = T
 
-    def forward(self, word_input, char_input):
+    def forward(self, word_input, char_input, anneal=False):
         batch_size = word_input.size(0)
         seq_len = word_input.size(1)
         char_output = self.char_encoder(char_input.reshape(-1, char_input.size(2))).reshape(
@@ -246,7 +246,10 @@ class Model(nn.Module):
         word_output = self.word_encoder(word_input, char_output)
         y = self.decoder(word_output)
 
-        return F.log_softmax(y / self.T, dim=2)
+        if anneal:
+            return F.log_softmax(y / self.T, dim=2)
+        else:
+            return F.log_softmax(y, dim=2)
 
     def init_weights(self):
         pass
