@@ -1,5 +1,5 @@
 import os
-import pickle
+import json
 import logging
 
 import torch
@@ -108,7 +108,7 @@ class Selector:
                 temporary_solutions.extend(local_branch)
             temporary_solutions.sort(key=lambda x: x.score, reverse=True)
             B_solutions = temporary_solutions[:self.beam_search_parameter]
-            print(f"At least {min([b.size for b in B_solutions])}/{self.round_size} words branched to")
+            print(f"at least {min([b.size for b in B_solutions])}/{self.round_size} words branched to", end="\r")
         best_solution = max(B_solutions, key=lambda x: x.score)
         best_windows = best_solution.windows
 
@@ -119,8 +119,8 @@ class Selector:
         pass
 
     def save(self, save_path):
-        with open(os.path.join(save_path, "round_selection.pk"), "wb") as f:
-            pickle.dump(
+        with open(os.path.join(save_path, "round_selection.pk"), "w") as f:
+            json.dump(
                 {
                     "all_round_windows": self.all_round_windows,
                     "round_selection_windows": self.round_selection
@@ -153,6 +153,7 @@ class Selector:
 
         # Not used when we have beam search!
         if self.beam_search_parameter == 1:
+
             out_list = self.purify_entries(out_list)
         return out_list
 

@@ -2,7 +2,7 @@ import logging
 from random import sample
 from typing import List, Dict
 import os
-import pickle
+import json
 
 from torch.utils.data import BatchSampler, SubsetRandomSampler, Subset
 from tqdm import tqdm
@@ -48,8 +48,8 @@ class SentenceIndex:
         return res
 
     def save(self, save_path):
-        with open(os.path.join(save_path, "agent_index.pk"), "wb") as f:
-            pickle.dump(self.__dict__, f)
+        with open(os.path.join(save_path, "agent_index.pk"), "w") as f:
+            json.dump({"labelled_idx": self.labelled_idx,"unlabelled_idx": self.unlabelled_idx,},f)
 
 
 class ActiveLearningAgent:
@@ -121,9 +121,9 @@ class ActiveLearningAgent:
     def save(self, save_path):
         self.index.save(save_path)
         self.selector.save(save_path)
-        with open(os.path.join(save_path, "round_scores.pk"), "wb") as f:
-            pickle.dump(
-                self.round_unlabelled_word_scores, f
+        with open(os.path.join(save_path, "round_scores.pk"), "w") as f:
+            json.dump(
+                {"round_unlabelled_word_scores": self.round_unlabelled_word_scores}, f
             )
 
     def random_init(self, num_sentences):
