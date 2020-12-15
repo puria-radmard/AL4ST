@@ -373,6 +373,8 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
     os.mkdir(round_dir)
     logging.info(f"logging round {round_num}")
 
+    agent.save(round_dir)
+
     with open(os.path.join(round_dir, f"record.tsv"), "wt", encoding="utf-8") as f:
         f.write("Epoch\tT_LOSS\tT_PREC\tT_RECL\tT_F1\tV_LOSS\tV_PREC\tV_RECL\tV_F1\n")
         for idx in range(len(round_results["all_val_loss"])):

@@ -1,12 +1,17 @@
+import os
+import pickle
+
 import torch
 import numpy as np
 
 
 class Selector:
 
-    def __init__(self, helper, normalisation_index: float):
+    def __init__(self, helper, normalisation_index: float, round_size):
         self.helper = helper
         self.normalisation_index = normalisation_index
+        self.round_size = round_size
+        self.round_selection = []
 
     def score_aggregation(self, word_scores):
         """
@@ -16,8 +21,28 @@ class Selector:
         score *= len(word_scores)**(-self.normalisation_index)
         return score
 
+    def select_best(self, window_scores):
+
+        best_windows = []
+        num_words_added = 0
+
+        for window in window_scores:
+            window_range = window[1]
+            window_size = window_range[1] - window_range[0]
+            num_words_added += window_size
+            best_windows.append(window)
+            if num_words_added >= self.round_size:
+                break
+
+        self.round_selection = best_windows
+        return best_windows
+
     def reduce_window_size(self):
         pass
+
+    def save(self, save_path):
+        with open(os.path.join(save_path, "round_selection.pk"), "wb") as f:
+            pickle.dump(self.round_selection, f)
 
     @staticmethod
     def purify_entries(entries):
@@ -82,8 +107,8 @@ class Selector:
 
 class SentenceSelector(Selector):
 
-    def __init__(self, helper, normalisation_index):
-        super().__init__(helper=helper, normalisation_index=normalisation_index)
+    def __init__(self, helper, normalisation_index, round_size):
+        super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size)
 
     def score_extraction(self, word_scores):
         """
@@ -109,8 +134,8 @@ class SentenceSelector(Selector):
 
 class FixedWindowSelector(Selector):
 
-    def __init__(self, helper, window_size, beta, model):
-        super().__init__(helper=helper, normalisation_index=1.0)
+    def __init__(self, helper, window_size, beta, model, round_size):
+        super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size)
         self.window_size = window_size
         self.model = model
         self.beta = beta
@@ -141,8 +166,8 @@ class FixedWindowSelector(Selector):
 
 class VariableWindowSelector(Selector):
 
-    def __init__(self, helper, window_range, beta, model):
-        super().__init__(helper=helper, normalisation_index=1.0)
+    def __init__(self, helper, window_range, beta, model, round_size):
+        super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size)
         self.window_range = window_range
         self.model = model
         self.beta = beta

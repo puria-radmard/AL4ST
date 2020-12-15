@@ -1,6 +1,8 @@
 import logging
 from random import sample
 from typing import List, Dict
+import os
+import pickle
 
 from torch.utils.data import BatchSampler, SubsetRandomSampler, Subset
 from tqdm import tqdm
@@ -44,6 +46,10 @@ class SentenceIndex:
             else:
                 res.append(float('nan'))
         return res
+
+    def save(self, save_path):
+        with open(os.path.join(save_path, "agent_index.pk"), "wb") as f:
+            pickle.dump(self.__dict__, f)
 
 
 class ActiveLearningAgent:
@@ -111,6 +117,10 @@ class ActiveLearningAgent:
     def budget_spent(self):
         return self.initial_budget - self.budget
 
+    def save(self, save_path):
+        self.index.save(save_path)
+        self.selector.save(save_path)
+
     def random_init(self, num_sentences):
         """
         Randomly initialise self.labelled_idx dictionary
@@ -135,21 +145,6 @@ class ActiveLearningAgent:
         batch = [self.train_set[j] for j in self.labelled_set[i]]
         # The window selector needs the batch indices and index sets
         return self.selector.get_batch(batch=batch, batch_indices=self.labelled_set[i], agent=self)
-
-    def select_best(self, window_scores):
-
-        best_windows = []
-        num_words_added = 0
-
-        for window in window_scores:
-            window_range = window[1]
-            window_size = window_range[1] - window_range[0]
-            num_words_added += window_size
-            best_windows.append(window)
-            if num_words_added >= self.round_size:
-                break
-
-        return best_windows
 
     def update_index(self, sentence_scores):
         """
@@ -179,7 +174,7 @@ class ActiveLearningAgent:
             window_scores.extend([(i, window[0], window[1]) for window in windows])
 
         window_scores.sort(key=lambda e: e[-1], reverse=True)
-        best_window_scores = self.select_best(window_scores)
+        best_window_scores = self.selector.select_best(window_scores)
 
         # No more windows of this size left
         if len(best_window_scores) == len(window_scores):
