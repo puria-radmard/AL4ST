@@ -12,12 +12,12 @@ def configure_al_agent(args, device, model, train_set, helper):
         if int(args.window[0]) == -1:
             selector = SentenceSelector(helper, normalisation_index=args.alpha, round_size=round_size)
         else:
-            FixedWindowSelector(
+            selector = FixedWindowSelector(
                 helper, window_size=int(args.window[0]), beta=args.beta, model=model, round_size=round_size
             )
     elif len(args.window) == 2:
         selector = VariableWindowSelector(
-            helper=helper, window_range=[int(a) for a in args.window], beta=args.beta, model=model
+            helper=helper, window_range=[int(a) for a in args.window], beta=args.beta, model=model, round_size=round_size
         )
     else:
         raise ValueError(f"Windows must be of one or two size, not {args.window}")
