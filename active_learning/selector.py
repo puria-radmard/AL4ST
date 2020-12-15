@@ -7,10 +7,16 @@ import numpy as np
 
 
 class BeamSearchSolution:
-    def __init__(self, windows, max_size, B):
+    def __init__(self, windows, max_size, B, init_size=None, init_score=None):
         self.windows = windows
-        self.score = sum([w[-1] for w in windows])
-        self.size = sum([w[1][1] - w[1][0] for w in windows])
+        if not init_score:
+            self.score = sum([w[-1] for w in windows])
+        else:
+            self.score = init_score
+        if not init_size:
+            self.size = sum([w[1][1] - w[1][0] for w in windows])
+        else:
+            self.size = init_size
         self.max_size = max_size
         self.lock = False
         self.B = B
@@ -19,9 +25,13 @@ class BeamSearchSolution:
         if self.size >= self.max_size:
             self.lock = True
             return self
-        return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B)
+        init_size = self.size + new_window[1][1] - new_window[1][0]
+        init_score = self.score + new_window[-1]
+        return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B, init_size=init_size,
+                                  init_score=init_score)
 
     def is_permutationally_distinct(self, other):
+        # We do a proxy-check for permutation invariance by checking for score and size of solutions
         if abs(self.score - other.score) < 1e-6 and self.size == other.size:
             return False
         else:
@@ -62,6 +72,8 @@ class BeamSearchSolution:
                     local_branch.append(possible_node)
                 if len(local_branch) == self.B:
                     return local_branch
+            if self.lock:
+                return [self]
 
         # No more windows addable
         if len(local_branch) == 0:
