@@ -49,7 +49,13 @@ class SentenceIndex:
 
     def save(self, save_path):
         with open(os.path.join(save_path, "agent_index.pk"), "w") as f:
-            json.dump({"labelled_idx": self.labelled_idx,"unlabelled_idx": self.unlabelled_idx,},f)
+            json.dump(
+                {
+                    "labelled_idx": {k: list(v) for k, v in self.labelled_idx.items()},
+                    "unlabelled_idx": {k: list(v) for k, v in self.unlabelled_idx.items()}
+                },
+                f
+            )
 
 
 class ActiveLearningAgent:
