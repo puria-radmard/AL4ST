@@ -1,17 +1,83 @@
 import os
 import pickle
+import logging
 
 import torch
 import numpy as np
 
 
+class BeamSearchSolution:
+    def __init__(self, windows, max_size, B):
+        self.windows = windows
+        self.score = sum([w[-1] for w in windows])
+        self.size = sum([w[1][1] - w[1][0] for w in windows])
+        self.max_size = max_size
+        self.lock = False
+        self.B = B
+
+    def add_window(self, new_window):
+        if self.size >= self.max_size:
+            self.lock = True
+            return self
+        return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B)
+
+    def is_permutationally_distinct(self, other):
+        if abs(self.score - other.score) < 1e-6 and self.size == other.size:
+            return False
+        else:
+            return True
+
+    def all_permutationally_distinct(self, others):
+        for other_solution in others:
+            if not self.is_permutationally_distinct(other_solution):
+                return False
+        else:
+            return True
+
+    @staticmethod
+    def windows_overlap(window1, window2):
+        if window1[0] != window2[0]:
+            return False
+        else:
+            window1_words = set(range(window1[1][0], window1[1][1]))
+            window2_words = set(range(window2[1][0], window2[1][1]))
+            if window1_words.intersection(window2_words):
+                return True
+        return False
+
+    def new_window_viable(self, new_window):
+        for window in self.windows:
+            if self.windows_overlap(window, new_window):
+                return False
+        else:
+            return True
+
+    def branch_out(self, other_solutions, window_scores):
+        # ASSUME window_scores ALREADY SORTED
+        local_branch = []
+        for window in window_scores:
+            if self.new_window_viable(window):
+                possible_node = self.add_window(window)
+                if possible_node.all_permutationally_distinct(other_solutions):
+                    local_branch.append(possible_node)
+                if len(local_branch) == self.B:
+                    return local_branch
+
+        # No more windows addable
+        if len(local_branch) == 0:
+            self.lock = True
+            return [self]
+
+
 class Selector:
 
-    def __init__(self, helper, normalisation_index: float, round_size):
+    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter):
         self.helper = helper
         self.normalisation_index = normalisation_index
         self.round_size = round_size
         self.round_selection = []
+        self.all_round_windows = []
+        self.beam_search_parameter = beam_search_parameter
 
     def score_aggregation(self, word_scores):
         """
@@ -22,17 +88,27 @@ class Selector:
         return score
 
     def select_best(self, window_scores):
+        # window_scores = [(i, [r1, r2], score), ...]
+        logging.info("beginning beam search: ")
+        print("0 words branched to")
+        self.all_round_windows = window_scores
 
-        best_windows = []
-        num_words_added = 0
+        # Initialise with best B scores
+        B_solutions = [
+            BeamSearchSolution([w], self.round_size, self.beam_search_parameter) for w in
+            window_scores[:self.beam_search_parameter]
+        ]
 
-        for window in window_scores:
-            window_range = window[1]
-            window_size = window_range[1] - window_range[0]
-            num_words_added += window_size
-            best_windows.append(window)
-            if num_words_added >= self.round_size:
-                break
+        while all([not b.lock for b in B_solutions]):
+            temporary_solutions = []
+            for solution in B_solutions:
+                local_branch = solution.branch_out(temporary_solutions, window_scores)
+                temporary_solutions.extend(local_branch)
+            temporary_solutions.sort(key=lambda x: x.score, reverse=True)
+            B_solutions = temporary_solutions[:self.beam_search_parameter]
+            print(f"At least {min([b.size for b in B_solutions])}/{self.round_size} words branched to")
+        best_solution = max(B_solutions, key=lambda x: x.score)
+        best_windows = best_solution.windows
 
         self.round_selection = best_windows
         return best_windows
@@ -42,11 +118,18 @@ class Selector:
 
     def save(self, save_path):
         with open(os.path.join(save_path, "round_selection.pk"), "wb") as f:
-            pickle.dump(self.round_selection, f)
+            pickle.dump(
+                {
+                    "all_round_windows": self.all_round_windows,
+                    "round_selection_windows": self.round_selection
+                }, f
+            )
 
     @staticmethod
     def purify_entries(entries):
-        """Sort and remove disjoint entries of form [([list, of, word, idx], score), ...]"""
+        """
+        Sort and remove disjoint entries of form [([list, of, word, idx], score), ...]
+        """
         start_entries = sorted(entries, key=lambda x: x[-1], reverse=True)
         final_entries = []
         highest_idx = set()
@@ -66,7 +149,9 @@ class Selector:
             if not np.isnan(score):  # i.e. does not overlap with already labelled words
                 out_list.append((lt[0], score))
 
-        out_list = self.purify_entries(out_list)
+        # Not used when we have beam search!
+        if self.beam_search_parameter == 1:
+            out_list = self.purify_entries(out_list)
         return out_list
 
     def get_batch(self, batch, batch_indices, agent):
@@ -108,7 +193,8 @@ class Selector:
 class SentenceSelector(Selector):
 
     def __init__(self, helper, normalisation_index, round_size):
-        super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size)
+        super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
+                         beam_search_parameter=1)
 
     def score_extraction(self, word_scores):
         """
@@ -134,8 +220,9 @@ class SentenceSelector(Selector):
 
 class FixedWindowSelector(Selector):
 
-    def __init__(self, helper, window_size, beta, model, round_size):
-        super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size)
+    def __init__(self, helper, window_size, beta, model, round_size, beam_search_parameter):
+        super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
+                         beam_search_parameter=beam_search_parameter)
         self.window_size = window_size
         self.model = model
         self.beta = beta
@@ -166,8 +253,9 @@ class FixedWindowSelector(Selector):
 
 class VariableWindowSelector(Selector):
 
-    def __init__(self, helper, window_range, beta, model, round_size):
-        super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size)
+    def __init__(self, helper, window_range, beta, model, round_size, beam_search_parameter):
+        super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
+                         beam_search_parameter=beam_search_parameter)
         self.window_range = window_range
         self.model = model
         self.beta = beta

@@ -66,8 +66,11 @@ def parse_args():
         required=True
     )
     parser.add_argument(
-        "-T", "--temperature", type=float, help="Temperature of scoring annealing. Does not affect W=-1 and beta=0 cases", required=True
+        "-T", "--temperature", type=float,
+        help="Temperature of scoring annealing. Does not affect W=-1 and beta=0 cases", required=True
     )
+    parser.add_argument("-B", "--beam_search", type=int, default=1,
+                        help="Beam search parameter. B=1 means a greedy search")
     parser.add_argument("-D", "--data_path", type=str, default="/home/pradmard/repos/data/OntoNotes-5.0/NER/")
     # parser.add_argument(
     #     "--labelthres", type=float, help="proportion of sentence that must be manually labelled before it is used

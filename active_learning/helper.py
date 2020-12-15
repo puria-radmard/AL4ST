@@ -10,14 +10,18 @@ def configure_al_agent(args, device, model, train_set, helper):
 
     if len(args.window) == 1:
         if int(args.window[0]) == -1:
+            if args.beam_search != 1:
+                raise ValueError("Full sentence selection requires a beam search parameter of 1")
             selector = SentenceSelector(helper, normalisation_index=args.alpha, round_size=round_size)
         else:
             selector = FixedWindowSelector(
-                helper, window_size=int(args.window[0]), beta=args.beta, model=model, round_size=round_size
+                helper, window_size=int(args.window[0]), beta=args.beta, model=model, round_size=round_size,
+                beam_search_parameter=args.beam_search
             )
     elif len(args.window) == 2:
         selector = VariableWindowSelector(
-            helper=helper, window_range=[int(a) for a in args.window], beta=args.beta, model=model, round_size=round_size
+            helper=helper, window_range=[int(a) for a in args.window], beta=args.beta, model=model,
+            round_size=round_size, beam_search_parameter=args.beam_search
         )
     else:
         raise ValueError(f"Windows must be of one or two size, not {args.window}")
