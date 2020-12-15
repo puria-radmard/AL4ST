@@ -67,6 +67,8 @@ class BeamSearchSolution:
         if len(local_branch) == 0:
             self.lock = True
             return [self]
+        else:
+            return local_branch
 
 
 class Selector:
