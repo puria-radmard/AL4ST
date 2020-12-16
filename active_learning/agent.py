@@ -127,10 +127,6 @@ class ActiveLearningAgent:
     def save(self, save_path):
         self.index.save(save_path)
         self.selector.save(save_path)
-        with open(os.path.join(save_path, "round_scores.pk"), "w") as f:
-            json.dump(
-                {"round_unlabelled_word_scores": self.round_unlabelled_word_scores}, f
-            )
 
     def random_init(self, num_sentences):
         """
