@@ -108,20 +108,20 @@ class Selector:
         self.all_round_windows = window_scores
 
         # Initialise with best B scores
-        B_solutions = [
+        b_solutions = [
             BeamSearchSolution([w], self.round_size, self.beam_search_parameter) for w in
             window_scores[:self.beam_search_parameter]
         ]
 
-        while all([not b.lock for b in B_solutions]):
-            temporary_solutions = []
-            for solution in B_solutions:
+        while all([not b.lock for b in b_solutions]):
+            temporary_solutions = [] # self.beam_search_parameter**2
+            for solution in b_solutions:
                 local_branch = solution.branch_out(temporary_solutions, window_scores)
                 temporary_solutions.extend(local_branch)
             temporary_solutions.sort(key=lambda x: x.score, reverse=True)
-            B_solutions = temporary_solutions[:self.beam_search_parameter]
-            print(f"at least {min([b.size for b in B_solutions])}/{self.round_size} words branched to", end="\r")
-        best_solution = max(B_solutions, key=lambda x: x.score)
+            b_solutions = temporary_solutions[:self.beam_search_parameter]
+            print(f"at least {min([b.size for b in b_solutions])}/{self.round_size} words branched to", end="\r")
+        best_solution = max(b_solutions, key=lambda x: x.score)
         best_windows = best_solution.windows
 
         self.round_selection = best_windows
@@ -164,9 +164,9 @@ class Selector:
                 out_list.append((lt[0], score))
 
         # Not used when we have beam search!
-        if self.beam_search_parameter == 1:
+        # if self.beam_search_parameter == 1:
+        #     out_list = self.purify_entries(out_list)
 
-            out_list = self.purify_entries(out_list)
         return out_list
 
     def get_batch(self, batch, batch_indices, agent):

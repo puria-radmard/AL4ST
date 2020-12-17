@@ -3,16 +3,33 @@ import datetime
 import os
 import sys
 import time
+import json
+from tqdm import tqdm
 
 import torch
 from torch import optim
-from tqdm import tqdm
+from torch._utils import _accumulate
 
 from active_learning.helper import configure_al_agent
 from model.ner_model import Model
 from model.utils import Helper
 from training_utils import *
 from utils import Charset, Vocabulary, Index, load, time_display
+
+
+def random_split(dataset, lengths):
+    r"""
+    Randomly split a dataset into non-overlapping new datasets of given lengths.
+
+    Arguments:
+        dataset (Dataset): Dataset to be split
+        lengths (sequence): lengths of splits to be produced
+    """
+    if sum(lengths) != len(dataset):
+        raise ValueError("Sum of input lengths does not equal the length of the input dataset!")
+
+    indices = torch.randperm(sum(lengths)).tolist()
+    return indices, [Subset(dataset, indices[offset - length:offset]) for offset, length in zip(_accumulate(lengths), lengths)]
 
 
 def configure_logger():
@@ -177,7 +194,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def make_root_dir(args):
+def make_root_dir(args, indices):
     rn = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
     root_dir = os.path.join(
         '.',
@@ -190,6 +207,7 @@ def make_root_dir(args):
         config_file.write(f"\n")
         # config_file.write(f"Number of train sentences {len(train_data)} \n")
         # config_file.write(f"Number of test sentences {len(test_data)} \n")
+        config_file.write(f"AFTER 17/12/2020 LOGGING CHANGE - ALL UNUSED WINDOWS INCLUDED\n")
         config_file.write(f"Proportion of initial labelled sentences: {args.initprop} \n")
         config_file.write(f"Number of acquisitions per round: {args.roundsize} \n")
         config_file.write(f"\n")
@@ -202,6 +220,9 @@ def make_root_dir(args):
             config_file.write(" ")
             config_file.write(str(v))
             config_file.write("\n")
+
+    with open(os.path.join(root_dir, "dataset_indices.json") as jfile:
+        json.dump(indices)
 
     return root_dir
 
@@ -528,7 +549,7 @@ def active_learning_train(args):
 
     # CHANGED FOR DEBUG
     val_size = int(0.01 * len(train_set))
-    train_set, val_set = random_split(train_set, [len(train_set) - val_size, val_size])
+    indices, (train_set, val_set) = random_split(train_set, [len(train_set) - val_size, val_size])
 
     # [vocab[a] for a in test_data[0][0]]   gives a sentence
     # [tag_set[a] for a in test_data[0][2]] gives the corresponding tagseq
@@ -573,7 +594,7 @@ def active_learning_train(args):
     agent.init(int(len(train_set) * args.initprop))
 
     # logger
-    root_dir = make_root_dir(args)
+    root_dir = make_root_dir(args, indices)
 
     round_num = 0
     for _ in agent:
