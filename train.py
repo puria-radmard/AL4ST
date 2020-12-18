@@ -221,8 +221,8 @@ def make_root_dir(args, indices):
             config_file.write(str(v))
             config_file.write("\n")
 
-    with open(os.path.join(root_dir, "dataset_indices.json") as jfile:
-        json.dump(indices)
+    with open(os.path.join(root_dir, "dataset_indices.json")) as jfile:
+        json.dump(indices, jfile)
 
     return root_dir
 
