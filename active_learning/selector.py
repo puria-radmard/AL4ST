@@ -268,8 +268,8 @@ class FixedWindowSelector(Selector):
 
 class VariableWindowSelector(Selector):
 
-    def __init__(self, helper, window_range, beta, model, round_size, beam_search_parameter):
-        super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
+    def __init__(self, helper, window_range, beta, model, round_size, beam_search_parameter, normalisation_index):
+        super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
                          beam_search_parameter=beam_search_parameter)
         self.window_range = window_range
         self.model = model
