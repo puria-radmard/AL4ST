@@ -105,7 +105,7 @@ class ActiveLearningAgent:
         self.unlabelled_set = None
         self.labelled_set = None
         self.num = 1
-        self.round_unlabelled_word_scores = {}
+        self.round_all_word_scores = {}
 
     def init(self, n):
         logging.info('starting random init')
@@ -127,6 +127,8 @@ class ActiveLearningAgent:
     def save(self, save_path):
         self.index.save(save_path)
         self.selector.save(save_path)
+        with open(os.path.join(save_path, "all_word_scores_no_nan.json"), "w") as f:
+            json.dump(self.round_all_word_scores, f)
 
     def random_init(self, num_sentences):
         """
@@ -208,7 +210,7 @@ class ActiveLearningAgent:
         if self.budget <= 0:
             logging.warning('no more budget left!')
 
-        sentence_scores = {}
+        sentence_scores_no_nan = {}
         logging.info('get sentence scores')
         for batch_index in tqdm(self.unlabelled_set):
             # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter
@@ -216,11 +218,14 @@ class ActiveLearningAgent:
             batch = [self.train_set[i] for i in batch_index]
             sentences, tokens, _, lengths = [a.to(self.device) for a in self.helper.get_batch(batch)]
             batch_scores = self.acquisition.score(sentences=sentences, lengths=lengths, tokens=tokens)
-
             for j, i in enumerate(batch_index):
-                sentence_scores[i] = self.index.make_nan_if_labelled(i, batch_scores[j])
+                sentence_scores_no_nan[i] = batch_scores[j].tolist()
 
-        self.round_unlabelled_word_scores = sentence_scores
+        sentence_scores = {}
+        for i, scores in sentence_scores_no_nan.items():
+            sentence_scores[i] = self.index.make_nan_if_labelled(i, scores)
+
+        self.round_all_word_scores = sentence_scores_no_nan
         return sentence_scores
 
     def update_datasets(self):

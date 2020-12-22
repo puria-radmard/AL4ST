@@ -7,7 +7,7 @@ import numpy as np
 
 
 class BeamSearchSolution:
-    def __init__(self, windows, max_size, B, init_size=None, init_score=None):
+    def __init__(self, windows, max_size, B, init_size=None, init_score=None, init_overlap_index={}):
         self.windows = windows
         if not init_score:
             self.score = sum([w[-1] for w in windows])
@@ -17,6 +17,7 @@ class BeamSearchSolution:
             self.size = sum([w[1][1] - w[1][0] for w in windows])
         else:
             self.size = init_size
+        self.overlap_index = init_overlap_index
         self.max_size = max_size
         self.lock = False
         self.B = B
@@ -27,8 +28,13 @@ class BeamSearchSolution:
             return self
         init_size = self.size + new_window[1][1] - new_window[1][0]
         init_score = self.score + new_window[-1]
+        init_overlap_index = self.overlap_index.copy()
+        if new_window[0] in init_overlap_index:
+            init_overlap_index[new_window[0]] = init_overlap_index[new_window[0]].union(set(range(*new_window[1])))
+        else:
+            init_overlap_index[new_window[0]] = set(range(*new_window[1]))
         return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B, init_size=init_size,
-                                  init_score=init_score)
+                                  init_score=init_score, init_overlap_index=init_overlap_index)
 
     def is_permutationally_distinct(self, other):
         # We do a proxy-check for permutation invariance by checking for score and size of solutions
@@ -44,23 +50,16 @@ class BeamSearchSolution:
         else:
             return True
 
-    @staticmethod
-    def windows_overlap(window1, window2):
-        if window1[0] != window2[0]:
-            return False
-        else:
-            window1_words = set(range(window1[1][0], window1[1][1]))
-            window2_words = set(range(window2[1][0], window2[1][1]))
-            if window1_words.intersection(window2_words):
-                return True
-        return False
-
     def new_window_viable(self, new_window):
-        for window in self.windows:
-            if self.windows_overlap(window, new_window):
-                return False
-        else:
+        if new_window[0] not in self.overlap_index:
+            self.overlap_index[new_window[0]] = set() # Just in case!
             return True
+        else:
+            new_word_idx = set(range(*new_window[1]))
+            if self.overlap_index[new_window[0]].intersect(new_word_idx):
+                return False
+            else:
+                return True
 
     def branch_out(self, other_solutions, window_scores):
         # ASSUME window_scores ALREADY SORTED
@@ -108,10 +107,9 @@ class Selector:
         self.all_round_windows = window_scores
 
         # Initialise with best B scores
-        b_solutions = [
-            BeamSearchSolution([w], self.round_size, self.beam_search_parameter) for w in
-            window_scores[:self.beam_search_parameter]
-        ]
+        b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter)
+                       for _ in range(self.beam_search_parameter)]
+        b_solutions = [sol.add_window(window_scores[j]) for j, sol in enumerate(b_solutions)]
 
         while all([not b.lock for b in b_solutions]):
             temporary_solutions = [] # self.beam_search_parameter**2
@@ -162,10 +160,6 @@ class Selector:
             score = self.score_aggregation(lt[1])
             if not np.isnan(score):  # i.e. does not overlap with already labelled words
                 out_list.append((lt[0], score))
-
-        # Not used when we have beam search!
-        # if self.beam_search_parameter == 1:
-        #     out_list = self.purify_entries(out_list)
 
         return out_list
 
