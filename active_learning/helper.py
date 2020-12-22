@@ -21,7 +21,7 @@ def configure_al_agent(args, device, model, train_set, helper):
     elif len(args.window) == 2:
         selector = VariableWindowSelector(
             helper=helper, window_range=[int(a) for a in args.window], beta=args.beta, model=model,
-            round_size=round_size, beam_search_parameter=args.beam_search
+            round_size=round_size, beam_search_parameter=args.beam_search, normalisation_index=args.alpha
         )
     else:
         raise ValueError(f"Windows must be of one or two size, not {args.window}")
