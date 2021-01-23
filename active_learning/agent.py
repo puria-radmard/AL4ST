@@ -180,7 +180,7 @@ class ActiveLearningAgent:
 
     def alter_train_set(self, window, new_labels):
         sidx, r, _ = window
-        self.train_set[sidx][r[0]:r[1]] = new_labels
+        self.train_set[sidx][-1][r[0]:r[1]] = new_labels
 
     def get_sentence_scores(self):
         """
