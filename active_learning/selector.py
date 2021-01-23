@@ -33,7 +33,7 @@ class Selector:
         self.all_round_windows = window_scores
 
         # Initialise with best B scores
-        b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter, labelled_ngrams={})
+        b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter, labelled_ngrams=set())
                        for _ in range(self.beam_search_parameter)]
         b_solutions = [sol.add_window(window_scores[j], self.train_set) for j, sol in enumerate(b_solutions)]
 
