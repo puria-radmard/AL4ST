@@ -6,91 +6,16 @@ import torch
 import numpy as np
 
 
-class BeamSearchSolution:
-    def __init__(self, windows, max_size, B, init_size=None, init_score=None, init_overlap_index={}):
-        self.windows = windows
-        if not init_score:
-            self.score = sum([w[-1] for w in windows])
-        else:
-            self.score = init_score
-        if not init_size:
-            self.size = sum([w[1][1] - w[1][0] for w in windows])
-        else:
-            self.size = init_size
-        self.overlap_index = init_overlap_index
-        self.max_size = max_size
-        self.lock = False
-        self.B = B
-
-    def add_window(self, new_window):
-        if self.size >= self.max_size:
-            self.lock = True
-            return self
-        init_size = self.size + new_window[1][1] - new_window[1][0]
-        init_score = self.score + new_window[-1]
-        init_overlap_index = self.overlap_index.copy()
-        if new_window[0] in init_overlap_index:
-            init_overlap_index[new_window[0]] = init_overlap_index[new_window[0]].union(set(range(*new_window[1])))
-        else:
-            init_overlap_index[new_window[0]] = set(range(*new_window[1]))
-        return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B, init_size=init_size,
-                                  init_score=init_score, init_overlap_index=init_overlap_index)
-
-    def is_permutationally_distinct(self, other):
-        # We do a proxy-check for permutation invariance by checking for score and size of solutions
-        if abs(self.score - other.score) < 1e-6 and self.size == other.size:
-            return False
-        else:
-            return True
-
-    def all_permutationally_distinct(self, others):
-        for other_solution in others:
-            if not self.is_permutationally_distinct(other_solution):
-                return False
-        else:
-            return True
-
-    def new_window_viable(self, new_window):
-        if new_window[0] not in self.overlap_index:
-            self.overlap_index[new_window[0]] = set() # Just in case!
-            return True
-        else:
-            new_word_idx = set(range(*new_window[1]))
-            if self.overlap_index[new_window[0]].intersection(new_word_idx):
-                return False
-            else:
-                return True
-
-    def branch_out(self, other_solutions, window_scores):
-        # ASSUME window_scores ALREADY SORTED
-        local_branch = []
-        for window in window_scores:
-            if self.new_window_viable(window):
-                possible_node = self.add_window(window)
-                if possible_node.all_permutationally_distinct(other_solutions):
-                    local_branch.append(possible_node)
-                if len(local_branch) == self.B:
-                    return local_branch
-            if self.lock:
-                return [self]
-
-        # No more windows addable
-        if len(local_branch) == 0:
-            self.lock = True
-            return [self]
-        else:
-            return local_branch
-
-
 class Selector:
 
-    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter):
+    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter, train_set):
         self.helper = helper
         self.normalisation_index = normalisation_index
         self.round_size = round_size
         self.round_selection = []
         self.all_round_windows = []
         self.beam_search_parameter = beam_search_parameter
+        self.train_set = train_set
 
     def score_aggregation(self, word_scores):
         """
@@ -100,30 +25,34 @@ class Selector:
         score *= len(word_scores)**(-self.normalisation_index)
         return score
 
-    def select_best(self, window_scores):
+    def select_best(self, window_scores, allow_propagation):
         # window_scores = [(i, [r1, r2], score), ...]
         logging.info("beginning beam search: ")
         print("0 words branched to")
         self.all_round_windows = window_scores
 
         # Initialise with best B scores
-        b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter)
+        b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter, labelled_ngrams={})
                        for _ in range(self.beam_search_parameter)]
-        b_solutions = [sol.add_window(window_scores[j]) for j, sol in enumerate(b_solutions)]
+        b_solutions = [sol.add_window(window_scores[j], self.train_set) for j, sol in enumerate(b_solutions)]
 
         while all([not b.lock for b in b_solutions]):
-            temporary_solutions = [] # self.beam_search_parameter**2
+            temporary_solutions = [] # -> self.beam_search_parameter**2
             for solution in b_solutions:
-                local_branch = solution.branch_out(temporary_solutions, window_scores)
+                local_branch = solution.branch_out(temporary_solutions, window_scores, train_set=self.train_set,
+                                                   allow_propagation=allow_propagation)
                 temporary_solutions.extend(local_branch)
             temporary_solutions.sort(key=lambda x: x.score, reverse=True)
             b_solutions = temporary_solutions[:self.beam_search_parameter]
             print(f"at least {min([b.size for b in b_solutions])}/{self.round_size} words branched to", end="\r")
+
         best_solution = max(b_solutions, key=lambda x: x.score)
         best_windows = best_solution.windows
+        labelled_ngrams = best_solution.labelled_ngrams
+        budget_spent = best_solution.size
 
-        self.round_selection = best_windows
-        return best_windows
+        self.round_selection = best_windows.copy()
+        return best_windows, labelled_ngrams, budget_spent
 
     def reduce_window_size(self):
         pass
@@ -172,9 +101,9 @@ class Selector:
 
         padded_sentences, padded_tokens, padded_tags, lengths = \
             [a.to(agent.device) for a in self.helper.get_batch(batch)]
-        self.model.eval()
-        model_log_probs = self.model(padded_sentences, padded_tokens).detach().to(agent.device)
-        self.model.train()
+        self.agent.model.eval()
+        model_log_probs = self.agent.model(padded_sentences, padded_tokens).detach().to(agent.device)
+        self.agent.model.train()
         self_supervision_mask = torch.ones(padded_tags.shape)
 
         # Fill in the words that have not been queried
@@ -201,9 +130,9 @@ class Selector:
 
 class SentenceSelector(Selector):
 
-    def __init__(self, helper, normalisation_index, round_size):
+    def __init__(self, helper, normalisation_index, round_size, train_set):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=1)
+                         beam_search_parameter=1, train_set=train_set)
 
     def score_extraction(self, word_scores):
         """
@@ -229,11 +158,10 @@ class SentenceSelector(Selector):
 
 class FixedWindowSelector(Selector):
 
-    def __init__(self, helper, window_size, beta, model, round_size, beam_search_parameter):
+    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, train_set):
         super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter)
+                         beam_search_parameter=beam_search_parameter, train_set=train_set)
         self.window_size = window_size
-        self.model = model
         self.beta = beta
 
     def reduce_window_size(self):
@@ -262,11 +190,10 @@ class FixedWindowSelector(Selector):
 
 class VariableWindowSelector(Selector):
 
-    def __init__(self, helper, window_range, beta, model, round_size, beam_search_parameter, normalisation_index):
+    def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index, train_set):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter)
+                         beam_search_parameter=beam_search_parameter, train_set=train_set)
         self.window_range = window_range
-        self.model = model
         self.beta = beta
 
     def reduce_window_size(self):

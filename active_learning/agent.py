@@ -6,56 +6,7 @@ import json
 
 from torch.utils.data import BatchSampler, SubsetRandomSampler, Subset
 from tqdm import tqdm
-
-
-class SentenceIndex:
-
-    def __init__(self, train_set):
-        self.__number_partially_labelled_sentences = 0
-        self.labelled_idx = {j: set() for j in range(len(train_set))}
-        self.unlabelled_idx = {j: set(range(len(train_set[j][0]))) for j in range(len(train_set))}
-
-    def label_sentence(self, i):
-        self.labelled_idx[i] = self.unlabelled_idx[i]
-        self.__number_partially_labelled_sentences += 1
-        self.unlabelled_idx[i] = set()
-
-    def label_window(self, i, r):
-        if not self.labelled_idx[i] and r[1] - r[0] > 0:
-            self.__number_partially_labelled_sentences += 1
-        self.labelled_idx[i].update(range(r[0], r[1]))
-        self.unlabelled_idx[i] -= set(range(r[0], r[1]))
-
-    def is_partially_labelled(self, i):
-        return len(self.labelled_idx[i]) > 0
-
-    def is_labelled(self, i):
-        return len(self.unlabelled_idx[i]) == 0
-
-    def is_partially_unlabelled(self, i):
-        return len(self.unlabelled_idx[i]) > 0
-
-    def get_number_partially_labelled_sentences(self):
-        return self.__number_partially_labelled_sentences
-
-    def make_nan_if_labelled(self, i, scores):
-        res = []
-        for j in range(len(scores)):
-            if j in self.unlabelled_idx[i]:
-                res.append(scores[j])
-            else:
-                res.append(float('nan'))
-        return res
-
-    def save(self, save_path):
-        with open(os.path.join(save_path, "agent_index.pk"), "w") as f:
-            json.dump(
-                {
-                    "labelled_idx": {k: list(v) for k, v in self.labelled_idx.items()},
-                    "unlabelled_idx": {k: list(v) for k, v in self.unlabelled_idx.items()}
-                },
-                f
-            )
+from .util_classes import SentenceIndex, tokens_from_window
 
 
 class ActiveLearningAgent:
@@ -68,7 +19,8 @@ class ActiveLearningAgent:
             acquisition_class,
             selector_class,
             helper,
-            device
+            device,
+            allow_propagation
     ):
         """
         train_set: loaded from pickle
@@ -84,9 +36,6 @@ class ActiveLearningAgent:
         round_size: total number instances we label each round (sentences)
         """
 
-        # !!! Right now, following the pipeline, we assume we can do word-wise aggregation of scores
-        # This might have to change....
-
         self.round_size = round_size
         self.batch_size = batch_size
         self.train_set = train_set
@@ -94,6 +43,7 @@ class ActiveLearningAgent:
         self.selector = selector_class
         self.helper = helper
         self.device = device
+        self.allow_propagation = allow_propagation
 
         # Dictionaries mapping {sentence idx: [list, of, word, idx]} for labelled and unlabelled words
         self.index = SentenceIndex(train_set)
@@ -183,23 +133,44 @@ class ActiveLearningAgent:
             window_scores.extend([(i, window[0], window[1]) for window in windows])
 
         window_scores.sort(key=lambda e: e[-1], reverse=True)
-        best_window_scores = self.selector.select_best(window_scores)
+        best_window_scores, labelled_ngrams, budget_spent = \
+            self.selector.select_best(window_scores, self.allow_propagation)
+        self.budget -= budget_spent
+        if self.budget < 0:
+            logging.warning('no more budget left!')
+
+        total_tokens = 0
+        for i, r, _ in best_window_scores:
+            cost = r[1] - r[0]
+            total_tokens += cost
+            self.index.label_window(i, r)
+
+        if self.allow_propagation:
+            # This must come after labelling initial set
+            propagated_windows = self.propagate_labels(window_scores, labelled_ngrams)
+
+            for i, r, _ in propagated_windows:
+                cost = r[1] - r[0]
+                total_tokens += cost
+                self.index.label_window(i, r)
+
+        logging.info(f'added {total_tokens} words to index mapping')
 
         # No more windows of this size left
         if len(best_window_scores) == len(window_scores):
             self.selector.reduce_window_size()
 
-        n_spent = 0
-        for i, r, _ in best_window_scores:
-            cost = r[1] - r[0]
-            self.budget -= cost
-            if self.budget < 0:
-                logging.warning('no more budget left!')
-                break
-            n_spent += cost
-            self.index.label_window(i, r)
+    def propagate_labels(self, window_scores, labelled_ngrams):
 
-        logging.info(f'added {n_spent} words to index mapping')
+        out_windows = []
+
+        for window in window_scores:
+            if self.index.new_window_unlabelled(window):
+                tokens = tokens_from_window(window, self.train_set)
+                if tokens in labelled_ngrams:
+                    out_windows.append(window)
+
+        return out_windows
 
     def get_sentence_scores(self):
         """
