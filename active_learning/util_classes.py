@@ -119,7 +119,7 @@ class BeamSearchSolution:
             return True
         else:
             new_word_idx = set(range(*new_window[1]))
-            if self.overlap_index[new_window[0]].intersect(new_word_idx):
+            if self.overlap_index[new_window[0]].intersection(new_word_idx):
                 return False
             else:
                 return True
