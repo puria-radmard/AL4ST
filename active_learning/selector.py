@@ -9,7 +9,7 @@ from .util_classes import BeamSearchSolution
 
 class Selector:
 
-    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter, agent):
+    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter):
         self.helper = helper
         self.normalisation_index = normalisation_index
         self.round_size = round_size
@@ -133,9 +133,9 @@ class Selector:
 
 class SentenceSelector(Selector):
 
-    def __init__(self, helper, normalisation_index, round_size, agent):
+    def __init__(self, helper, normalisation_index, round_size):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=1, agent=agent)
+                         beam_search_parameter=1)
 
     def score_extraction(self, word_scores):
         """
@@ -161,9 +161,9 @@ class SentenceSelector(Selector):
 
 class FixedWindowSelector(Selector):
 
-    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, agent, model):
+    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, model):
         super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter, agent=agent)
+                         beam_search_parameter=beam_search_parameter)
         self.window_size = window_size
         self.model = model
         self.beta = beta
@@ -194,10 +194,9 @@ class FixedWindowSelector(Selector):
 
 class VariableWindowSelector(Selector):
 
-    def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index,
-                 agent, model):
+    def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index, model):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter, agent=agent)
+                         beam_search_parameter=beam_search_parameter)
         self.window_range = window_range
         self.model = model
         self.beta = beta
