@@ -41,12 +41,13 @@ class ActiveLearningAgent:
         self.train_set = train_set
         self.acquisition = acquisition_class
         self.selector = selector_class
+        self.selector.assign_agent(self)
         self.helper = helper
         self.device = device
         self.allow_propagation = allow_propagation
 
         # Dictionaries mapping {sentence idx: [list, of, word, idx]} for labelled and unlabelled words
-        self.index = SentenceIndex(train_set)
+        self.index = SentenceIndex(self)
 
         num_tokens = sum([len(sentence) for sentence, _, _ in self.train_set])
         self.budget = num_tokens
@@ -133,44 +134,53 @@ class ActiveLearningAgent:
             window_scores.extend([(i, window[0], window[1]) for window in windows])
 
         window_scores.sort(key=lambda e: e[-1], reverse=True)
-        best_window_scores, labelled_ngrams, budget_spent = \
+        best_window_scores, labelled_ngrams_lookup, budget_spent = \
             self.selector.select_best(window_scores, self.allow_propagation)
         self.budget -= budget_spent
         if self.budget < 0:
             logging.warning('no more budget left!')
 
         total_tokens = 0
+
         for i, r, _ in best_window_scores:
             cost = r[1] - r[0]
             total_tokens += cost
             self.index.label_window(i, r)
 
+        manual_cost = total_tokens
+        assert manual_cost == budget_spent
+
         if self.allow_propagation:
             # This must come after labelling initial set
-            propagated_windows = self.propagate_labels(window_scores, labelled_ngrams)
+            propagated_windows = self.propagate_labels(window_scores, labelled_ngrams_lookup)
 
             for i, r, _ in propagated_windows:
                 cost = r[1] - r[0]
                 total_tokens += cost
                 self.index.label_window(i, r)
 
-        logging.info(f'added {total_tokens} words to index mapping')
+        logging.info(f'added {total_tokens} words to index mapping, of which {budget_spent} manual')
 
         # No more windows of this size left
         if len(best_window_scores) == len(window_scores):
             self.selector.reduce_window_size()
 
-    def propagate_labels(self, window_scores, labelled_ngrams):
+    def propagate_labels(self, window_scores, labelled_ngrams_lookup):
 
         out_windows = []
 
         for window in window_scores:
             if self.index.new_window_unlabelled(window):
                 tokens = tokens_from_window(window, self.train_set)
-                if tokens in labelled_ngrams:
+                if tokens in labelled_ngrams_lookup.keys():
                     out_windows.append(window)
+                    self.alter_train_set(window, labelled_ngrams_lookup[tokens])
 
         return out_windows
+
+    def alter_train_set(self, window, new_labels):
+        sidx, r, _ = window
+        self.train_set[sidx][r[0]:r[1]] = new_labels
 
     def get_sentence_scores(self):
         """

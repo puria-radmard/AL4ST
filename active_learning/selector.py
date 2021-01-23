@@ -9,14 +9,16 @@ from .util_classes import BeamSearchSolution
 
 class Selector:
 
-    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter, train_set):
+    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter, agent):
         self.helper = helper
         self.normalisation_index = normalisation_index
         self.round_size = round_size
         self.round_selection = []
         self.all_round_windows = []
         self.beam_search_parameter = beam_search_parameter
-        self.train_set = train_set
+
+    def assign_agent(self, agent):
+        self.agent = agent
 
     def score_aggregation(self, word_scores):
         """
@@ -33,14 +35,14 @@ class Selector:
         self.all_round_windows = window_scores
 
         # Initialise with best B scores
-        b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter, labelled_ngrams=set())
+        b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter, labelled_ngrams={})
                        for _ in range(self.beam_search_parameter)]
-        b_solutions = [sol.add_window(window_scores[j], self.train_set) for j, sol in enumerate(b_solutions)]
+        b_solutions = [sol.add_window(window_scores[j], self.agent.train_set) for j, sol in enumerate(b_solutions)]
 
         while all([not b.lock for b in b_solutions]):
             temporary_solutions = [] # -> self.beam_search_parameter**2
             for solution in b_solutions:
-                local_branch = solution.branch_out(temporary_solutions, window_scores, train_set=self.train_set,
+                local_branch = solution.branch_out(temporary_solutions, window_scores, train_set=self.agent.train_set,
                                                    allow_propagation=allow_propagation)
                 temporary_solutions.extend(local_branch)
             temporary_solutions.sort(key=lambda x: x.score, reverse=True)
@@ -131,9 +133,9 @@ class Selector:
 
 class SentenceSelector(Selector):
 
-    def __init__(self, helper, normalisation_index, round_size, train_set):
+    def __init__(self, helper, normalisation_index, round_size, agent):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=1, train_set=train_set)
+                         beam_search_parameter=1, agent=agent)
 
     def score_extraction(self, word_scores):
         """
@@ -159,9 +161,9 @@ class SentenceSelector(Selector):
 
 class FixedWindowSelector(Selector):
 
-    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, train_set, model):
+    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, agent, model):
         super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter, train_set=train_set)
+                         beam_search_parameter=beam_search_parameter, agent=agent)
         self.window_size = window_size
         self.model = model
         self.beta = beta
@@ -193,9 +195,9 @@ class FixedWindowSelector(Selector):
 class VariableWindowSelector(Selector):
 
     def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index,
-                 train_set, model):
+                 agent, model):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter, train_set=train_set)
+                         beam_search_parameter=beam_search_parameter, agent=agent)
         self.window_range = window_range
         self.model = model
         self.beta = beta

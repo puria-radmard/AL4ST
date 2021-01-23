@@ -6,13 +6,17 @@ def tokens_from_window(_window, _train_set):
     s_idx, [i, j], _ = _window
     return tuple(_train_set[s_idx][0][i:j])
 
+def labels_from_window(_window, _train_set):
+    s_idx, [i, j], _ = _window
+    return tuple(_train_set[s_idx][-1][i:j])
+
 
 class SentenceIndex:
 
-    def __init__(self, train_set):
+    def __init__(self, agent):
         self.__number_partially_labelled_sentences = 0
-        self.labelled_idx = {j: set() for j in range(len(train_set))}
-        self.unlabelled_idx = {j: set(range(len(train_set[j][0]))) for j in range(len(train_set))}
+        self.labelled_idx = {j: set() for j in range(len(agent.train_set))}
+        self.unlabelled_idx = {j: set(range(len(agent.train_set[j][0]))) for j in range(len(agent.train_set))}
 
     def label_sentence(self, i):
         self.labelled_idx[i] = self.unlabelled_idx[i]
@@ -81,13 +85,11 @@ class BeamSearchSolution:
         self.B = B
         self.labelled_ngrams = labelled_ngrams
 
-    def add_window(self, new_window, train_set, label_propogation=False):
+    def add_window(self, new_window, train_set):
         if self.size >= self.max_size:
             self.lock = True
             return self
-        init_size = self.size
-        if not label_propogation:
-            init_size += new_window[1][1] - new_window[1][0]
+        init_size = self.size + new_window[1][1] - new_window[1][0]
         init_score = self.score + new_window[-1]
         init_overlap_index = self.overlap_index.copy()
         if new_window[0] in init_overlap_index:
@@ -95,7 +97,8 @@ class BeamSearchSolution:
         else:
             init_overlap_index[new_window[0]] = set(range(*new_window[1]))
         new_ngram = tokens_from_window(new_window, train_set)
-        self.labelled_ngrams = self.labelled_ngrams.union({new_ngram})
+        ngram_annotations = labels_from_window(new_window, train_set)
+        self.labelled_ngrams[new_ngram] = ngram_annotations
         return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B, self.labelled_ngrams,
                                   init_size=init_size, init_score=init_score, init_overlap_index=init_overlap_index)
 
@@ -130,11 +133,11 @@ class BeamSearchSolution:
         for window in window_scores:
             if self.new_window_unlabelled(window):
                 new_ngram = tokens_from_window(window, train_set)
-                if new_ngram in self.labelled_ngrams and allow_propagation:
-                    lp = True
+                # i.e. if we are allowing automatic labelling and we've already seen this ngram, then skip
+                if new_ngram in self.labelled_ngrams.keys() and allow_propagation:
+                    continue
                 else:
-                    lp = False
-                possible_node = self.add_window(window, train_set, label_propogation=lp)
+                    possible_node = self.add_window(window, train_set)
                 if possible_node.all_permutationally_distinct(other_solutions):
                     local_branch.append(possible_node)
                 if len(local_branch) == self.B:
