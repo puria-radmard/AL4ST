@@ -4,6 +4,7 @@ import logging
 
 import torch
 import numpy as np
+from .util_classes import BeamSearchSolution
 
 
 class Selector:
