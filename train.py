@@ -74,7 +74,7 @@ def parse_args():
         help="number of words acquired made per round (rounded up to closest possible each round)", default=80000
     )
     parser.add_argument(
-        "-propagation", "--allow_propogation", type=int,
+        "-propagation", "--allow_propagation", type=int,
         help="1 or 0 please, allow label propagation"
     )
     parser.add_argument(
