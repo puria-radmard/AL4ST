@@ -74,6 +74,10 @@ def parse_args():
         help="number of words acquired made per round (rounded up to closest possible each round)", default=80000
     )
     parser.add_argument(
+        "-propagation", "--allow_propogation", type=int,
+        help="1 or 0 please, allow label propagation", default=0
+    )
+    parser.add_argument(
         "--beta", type=float, help="Weight (should be in [0,1]) that self-supervised losses are multiplied by",
         required=True
     )
