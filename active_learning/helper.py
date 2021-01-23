@@ -12,11 +12,11 @@ def configure_al_agent(args, device, model, train_set, helper):
         if int(args.window[0]) == -1:
             if args.beam_search != 1:
                 raise ValueError("Full sentence selection requires a beam search parameter of 1")
-            selector = SentenceSelector(helper, normalisation_index=args.alpha, round_size=round_size,
+            selector = SentenceSelector(helper, normalisation_index=args.alpha, round_size=round_size, model=model,
                                         train_set=train_set)
         else:
             selector = FixedWindowSelector(
-                helper, window_size=int(args.window[0]), beta=args.beta, round_size=round_size,
+                helper, window_size=int(args.window[0]), beta=args.beta, round_size=round_size, model=model,
                 beam_search_parameter=args.beam_search, train_set=train_set
             )
     elif len(args.window) == 2:

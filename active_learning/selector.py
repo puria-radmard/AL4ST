@@ -101,9 +101,9 @@ class Selector:
 
         padded_sentences, padded_tokens, padded_tags, lengths = \
             [a.to(agent.device) for a in self.helper.get_batch(batch)]
-        self.agent.model.eval()
-        model_log_probs = self.agent.model(padded_sentences, padded_tokens).detach().to(agent.device)
-        self.agent.model.train()
+        self.model.eval()
+        model_log_probs = self.model(padded_sentences, padded_tokens).detach().to(agent.device)
+        self.model.train()
         self_supervision_mask = torch.ones(padded_tags.shape)
 
         # Fill in the words that have not been queried
@@ -158,10 +158,11 @@ class SentenceSelector(Selector):
 
 class FixedWindowSelector(Selector):
 
-    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, train_set):
+    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, train_set, model):
         super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
                          beam_search_parameter=beam_search_parameter, train_set=train_set)
         self.window_size = window_size
+        self.model = model
         self.beta = beta
 
     def reduce_window_size(self):
@@ -190,10 +191,12 @@ class FixedWindowSelector(Selector):
 
 class VariableWindowSelector(Selector):
 
-    def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index, train_set):
+    def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index,
+                 train_set, model):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
                          beam_search_parameter=beam_search_parameter, train_set=train_set)
         self.window_range = window_range
+        self.model = model
         self.beta = beta
 
     def reduce_window_size(self):
