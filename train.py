@@ -196,9 +196,10 @@ def parse_args():
 
 def make_root_dir(args, indices):
     rn = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    
     root_dir = os.path.join(
         '.',
-        f"{'-'.join(sys.argv[1:])}--{rn}"
+        f"{'-'.join(sys.argv[1:])}--{rn}".replace("/", "")
     )
     os.mkdir(root_dir)
 
@@ -498,10 +499,10 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
 def get_measure_type(path):
     if "NYT_CoType" in path:
         return 'relations'
-    elif "OntoNotes-5.0" in path:
+    elif "OntoNotes-5.0" in path or 'conll' in path:
         return 'entities'
     else:
-        raise NotImplementedError
+        raise NotImplementedError(path)
 
 
 def load_dataset(path):

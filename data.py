@@ -118,7 +118,10 @@ def prepare_data_set(
             for entity_mention in sentence["entityMentions"]:
                 idx = entity_mention["start"]
                 label = entity_mention["label"]
-                tags_idx[idx] = entity_labels[label]
+                try:
+                    tags_idx[idx] = entity_labels[label]
+                except:
+                    import pdb; pdb.set_trace()
 
         dataset.append((sentence_idx, tokens_idx, tags_idx))
         if overlap:
