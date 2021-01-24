@@ -114,7 +114,8 @@ class Selector:
         for sentence_idx, sentence_tags in enumerate(padded_tags):
             sentence_index = batch_indices[sentence_idx]
             for word_idx in range(int(lengths[sentence_idx])):
-                if word_idx in agent.index.labelled_idx[sentence_index]:  # Labelled
+                if word_idx in agent.index.labelled_idx[sentence_index] or \
+                        word_idx in agent.index.temp_labelled_idx[sentence_index]:  # Labelled or temporarily labelled
                     pass
                 elif word_idx in agent.index.unlabelled_idx[sentence_index]:  # Not labelled
                     padded_tags[sentence_idx, word_idx] = \

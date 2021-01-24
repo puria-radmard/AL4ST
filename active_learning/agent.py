@@ -149,6 +149,8 @@ class ActiveLearningAgent:
         if self.budget < 0:
             logging.warning('no more budget left!')
 
+        labelled_ngrams_lookup = {k: v for k,v in labelled_ngrams_lookup.items() if sum(v)}
+
         total_tokens = 0
 
         for i, r, _ in best_window_scores:
@@ -179,7 +181,7 @@ class ActiveLearningAgent:
         out_windows = []
 
         for window in window_scores:
-            if self.index.new_window_unlabelled(window):
+            if self.index.new_window_unlabelled(window):# and self.index.is_partially_labelled(window[0]):
                 tokens = tokens_from_window(window, self.train_set)
                 if tokens in labelled_ngrams_lookup.keys():
                     out_windows.append(window)

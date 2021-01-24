@@ -72,7 +72,7 @@ class SentenceIndex:
                 {
                     "labelled_idx": {k: list(v) for k, v in self.labelled_idx.items()},
                     "unlabelled_idx": {k: list(v) for k, v in self.unlabelled_idx.items()},
-                    "partially_labelled_idx": {k: list(v) for k, v in self.temp_labelled_idx.items()},
+                    "temporarily_labelled_idx": {k: list(v) for k, v in self.temp_labelled_idx.items()},
                 },
                 f
             )
