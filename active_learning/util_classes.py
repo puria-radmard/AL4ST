@@ -17,6 +17,7 @@ class SentenceIndex:
         self.__number_partially_labelled_sentences = 0
         self.labelled_idx = {j: set() for j in range(len(agent.train_set))}
         self.unlabelled_idx = {j: set(range(len(agent.train_set[j][0]))) for j in range(len(agent.train_set))}
+        self.temp_labelled_idx = {j: set() for j in range(len(agent.train_set))}
 
     def label_sentence(self, i):
         self.labelled_idx[i] = self.unlabelled_idx[i]
@@ -28,6 +29,11 @@ class SentenceIndex:
             self.__number_partially_labelled_sentences += 1
         self.labelled_idx[i].update(range(r[0], r[1]))
         self.unlabelled_idx[i] -= set(range(r[0], r[1]))
+        self.temp_labelled_idx[i] -= set(range(r[0], r[1]))
+
+    def temporarily_label_window(self, i, r):
+        self.unlabelled_idx[i] -= set(range(r[0], r[1]))
+        self.temp_labelled_idx[i].update(range(r[0], r[1]))
 
     def new_window_unlabelled(self, new_window):
         sidx = new_window[0]
@@ -51,10 +57,10 @@ class SentenceIndex:
     def make_nan_if_labelled(self, i, scores):
         res = []
         for j in range(len(scores)):
-            if j in self.unlabelled_idx[i]:
-                res.append(scores[j])
-            else:
+            if j in self.labelled_idx[i]:
                 res.append(float('nan'))
+            else:
+                res.append(scores[j])
         return res
 
     def save(self, save_path):
@@ -62,7 +68,8 @@ class SentenceIndex:
             json.dump(
                 {
                     "labelled_idx": {k: list(v) for k, v in self.labelled_idx.items()},
-                    "unlabelled_idx": {k: list(v) for k, v in self.unlabelled_idx.items()}
+                    "unlabelled_idx": {k: list(v) for k, v in self.unlabelled_idx.items()},
+                    "partially_labelled_idx": {k: list(v) for k, v in self.temp_labelled_idx.items()},
                 },
                 f
             )

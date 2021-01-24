@@ -436,65 +436,19 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
             os.path.join(round_dir, f"sentence_prop-{round_num}.tsv"), "wt", encoding="utf-8"
     ) as f:
 
-        f.write("sent_length\tnum_labelled\n")
+        f.write("sent_length\tnum_labelled\tnum_temp_labelled\n")
 
         i = 0
         for sentence_idx, labelled_idx in agent.index.labelled_idx.items():
 
             num_unlabelled = len(agent.index.unlabelled_idx[sentence_idx])
-            f.write(str(len(labelled_idx) + num_unlabelled))
+            num_temp_labelled = len(agent.index.temp_labelled_idx[sentence_idx])
+            f.write(str(len(labelled_idx) + num_unlabelled + num_temp_labelled))
             f.write("\t")
             f.write(str(len(labelled_idx)))
+            f.write("\t")
+            f.write(str(num_temp_labelled))
             f.write("\n")
-
-    # with open(
-    #         os.path.join(round_dir, f"sentence_labels-{round}"), "wt", encoding="utf-8"
-    # ) as f:
-    #     f.write("This file shows sentences used in training for this round.\n")
-    #     f.write("For each sentence, first row represents the words in the sentence.\n")
-    #     f.write(
-    #         "\tUPPERCASE are words labelled by the annotator, lowercase are the words automatically"
-    #         " labelled by the model.\n")
-    #     f.write("The second row is the ground truth labels.\n")
-    #     f.write("The third row is the labels used by the model in training.\n")
-    #     f.write("\n")
-    #     f.write(
-    #         "For full sentence labelling all words will be uppercase. For oracles the second and third row will"
-    #         "be the same for uppercase words\n")
-    #     f.write("\n")
-    #
-    #     for batch_indices in agent.labelled_batch_indices:
-    #
-    #         sentences, _, used_targets, _, _ = agent.get_batch(
-    #             batch_indices, agent.autolabelled_data, device
-    #         )
-    #         _, _, real_targets, _, _ = get_batch(
-    #             batch_indices, train_data, device
-    #         )
-    #
-    #         for j, batch_idx in enumerate(batch_indices):
-    #             labelled_idx = agent.labelled_idx[batch_idx]
-    #             f.write("\n")
-    #             f.write(f"Sentence {batch_idx}\n")
-    #             f.write(
-    #                 "\t".join([
-    #                     vocab[int(v)].upper() if k in labelled_idx else vocab[int(v)].upper() for k, v in
-    #                     enumerate(sentences[j])
-    #                 ])
-    #             )
-    #             f.write("\n")
-    #             f.write(
-    #                 "\t".join([
-    #                     tag_set[int(v)] for v in real_targets[j]
-    #                 ])
-    #             )
-    #             f.write("\n")
-    #             f.write(
-    #                 "\t".join([
-    #                     tag_set[int(v)] for v in used_targets[j]
-    #                 ])
-    #             )
-    #             f.write("\n")
 
     logging.info(f"finished logging round {round_num}")
 

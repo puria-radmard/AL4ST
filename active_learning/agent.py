@@ -39,6 +39,7 @@ class ActiveLearningAgent:
         self.round_size = round_size
         self.batch_size = batch_size
         self.train_set = train_set
+        self.temporary_train_set = train_set.copy()
         self.acquisition = acquisition_class
         self.selector = selector_class
         self.selector.assign_agent(self)
@@ -102,9 +103,16 @@ class ActiveLearningAgent:
 
     def get_batch(self, i):
         # Use selector get_batch here as we want to fill things in if needed
-        batch = [self.train_set[j] for j in self.labelled_set[i]]
+        batch = [self.temporary_labels(j) for j in self.labelled_set[i]]
         # The window selector needs the batch indices and index sets
         return self.selector.get_batch(batch=batch, batch_indices=self.labelled_set[i], agent=self)
+
+    def temporary_labels(self, i):
+        temp_tokens = self.train_set[i][0]
+        temp_letters = self.train_set[i][1]
+        temp_labels = [self.train_set[i][-1][j] if j in self.index.labelled_idx[i]
+                       else self.temporary_train_set[i][-1][j] for j in range(len(temp_tokens))]
+        return temp_tokens, temp_letters, temp_labels
 
     def update_index(self, sentence_scores):
         """
@@ -157,7 +165,7 @@ class ActiveLearningAgent:
             for i, r, _ in propagated_windows:
                 cost = r[1] - r[0]
                 total_tokens += cost
-                self.index.label_window(i, r)
+                self.index.temporarily_label_window(i, r)
 
         logging.info(f'added {total_tokens} words to index mapping, of which {budget_spent} manual')
 
@@ -174,13 +182,13 @@ class ActiveLearningAgent:
                 tokens = tokens_from_window(window, self.train_set)
                 if tokens in labelled_ngrams_lookup.keys():
                     out_windows.append(window)
-                    self.alter_train_set(window, labelled_ngrams_lookup[tokens])
+                    self.alter_temp_train_set(window, labelled_ngrams_lookup[tokens])
 
         return out_windows
 
-    def alter_train_set(self, window, new_labels):
+    def alter_temp_train_set(self, window, new_labels):
         sidx, r, _ = window
-        self.train_set[sidx][-1][r[0]:r[1]] = new_labels
+        self.temporary_train_set[sidx][-1][r[0]:r[1]] = new_labels
 
     def get_sentence_scores(self):
         """

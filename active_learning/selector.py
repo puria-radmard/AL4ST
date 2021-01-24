@@ -9,13 +9,14 @@ from .util_classes import BeamSearchSolution
 
 class Selector:
 
-    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter):
+    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter, model):
         self.helper = helper
         self.normalisation_index = normalisation_index
         self.round_size = round_size
         self.round_selection = []
         self.all_round_windows = []
         self.beam_search_parameter = beam_search_parameter
+        self.model = model
 
     def assign_agent(self, agent):
         self.agent = agent
@@ -115,6 +116,9 @@ class Selector:
             for word_idx in range(int(lengths[sentence_idx])):
                 if word_idx in agent.index.labelled_idx[sentence_index]:  # Labelled
                     pass
+                elif word_idx in agent.index.temp_labelled_idx[sentence_index]:  # Labels from propagation
+                    padded_tags[sentence_idx, word_idx] = \
+                        None
                 elif word_idx in agent.index.unlabelled_idx[sentence_index]:  # Not labelled
                     padded_tags[sentence_idx, word_idx] = \
                         torch.exp(model_log_probs[sentence_idx, word_idx])
@@ -135,7 +139,7 @@ class SentenceSelector(Selector):
 
     def __init__(self, helper, normalisation_index, round_size):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=1)
+                         beam_search_parameter=1, model=None)
 
     def score_extraction(self, word_scores):
         """
@@ -163,9 +167,8 @@ class FixedWindowSelector(Selector):
 
     def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, model):
         super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter)
+                         beam_search_parameter=beam_search_parameter, model=model)
         self.window_size = window_size
-        self.model = model
         self.beta = beta
 
     def reduce_window_size(self):
@@ -196,9 +199,8 @@ class VariableWindowSelector(Selector):
 
     def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index, model):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter)
+                         beam_search_parameter=beam_search_parameter, model=model)
         self.window_range = window_range
-        self.model = model
         self.beta = beta
 
     def reduce_window_size(self):
