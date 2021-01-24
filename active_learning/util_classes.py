@@ -45,6 +45,9 @@ class SentenceIndex:
     def is_partially_labelled(self, i):
         return len(self.labelled_idx[i]) > 0
 
+    def is_partially_temporarily_labelled(self, i):
+        return len(self.temp_labelled_idx[i]) > 0
+
     def is_labelled(self, i):
         return len(self.unlabelled_idx[i]) == 0
 

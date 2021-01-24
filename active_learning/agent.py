@@ -38,6 +38,7 @@ class ActiveLearningAgent:
 
         self.round_size = round_size
         self.batch_size = batch_size
+        train_set = list(train_set)
         self.train_set = train_set
         self.temporary_train_set = train_set.copy()
         self.acquisition = acquisition_class
@@ -225,7 +226,7 @@ class ActiveLearningAgent:
         for i in tqdm(range(len(self.train_set))):
             if self.index.is_partially_unlabelled(i):
                 unlabelled_sentences.add(i)
-            if self.index.is_partially_labelled(i):
+            if self.index.is_partially_temporarily_labelled(i) or self.index.is_partially_labelled(i):
                 labelled_sentences.add(i)
 
         unlabelled_subset = Subset(self.train_set, list(unlabelled_sentences))
