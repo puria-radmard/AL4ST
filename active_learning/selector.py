@@ -116,9 +116,6 @@ class Selector:
             for word_idx in range(int(lengths[sentence_idx])):
                 if word_idx in agent.index.labelled_idx[sentence_index]:  # Labelled
                     pass
-                elif word_idx in agent.index.temp_labelled_idx[sentence_index]:  # Labels from propagation
-                    padded_tags[sentence_idx, word_idx] = \
-                        None
                 elif word_idx in agent.index.unlabelled_idx[sentence_index]:  # Not labelled
                     padded_tags[sentence_idx, word_idx] = \
                         torch.exp(model_log_probs[sentence_idx, word_idx])
