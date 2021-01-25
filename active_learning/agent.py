@@ -20,7 +20,7 @@ class ActiveLearningAgent:
             selector_class,
             helper,
             device,
-            allow_propagation
+            propagation_mode
     ):
         """
         train_set: loaded from pickle
@@ -46,7 +46,7 @@ class ActiveLearningAgent:
         self.selector.assign_agent(self)
         self.helper = helper
         self.device = device
-        self.allow_propagation = allow_propagation
+        self.propagation_mode = propagation_mode
 
         # Dictionaries mapping {sentence idx: [list, of, word, idx]} for labelled and unlabelled words
         self.index = SentenceIndex(self)
@@ -144,7 +144,7 @@ class ActiveLearningAgent:
 
         window_scores.sort(key=lambda e: e[-1], reverse=True)
         best_window_scores, labelled_ngrams_lookup, budget_spent = \
-            self.selector.select_best(window_scores, self.allow_propagation)
+            self.selector.select_best(window_scores, self.propagation_mode != 0)
         self.budget -= budget_spent
         if self.budget < 0:
             logging.warning('no more budget left!')
@@ -161,7 +161,7 @@ class ActiveLearningAgent:
         manual_cost = total_tokens
         assert manual_cost == budget_spent
 
-        if self.allow_propagation:
+        if self.propagation_mode:
             # This must come after labelling initial set
             propagated_windows = self.propagate_labels(window_scores, labelled_ngrams_lookup)
 
@@ -228,8 +228,12 @@ class ActiveLearningAgent:
         for i in tqdm(range(len(self.train_set))):
             if self.index.is_partially_unlabelled(i):
                 unlabelled_sentences.add(i)
-            if self.index.is_partially_labelled(i): # or self.index.is_partially_temporarily_labelled(i):
-                labelled_sentences.add(i)
+            if self.propagation_mode == 2:
+                if self.index.is_partially_labelled(i):
+                    labelled_sentences.add(i)
+            else:
+                if self.index.has_any_labels(i):
+                    labelled_sentences.add(i)
 
         unlabelled_subset = Subset(self.train_set, list(unlabelled_sentences))
         labelled_subset = Subset(self.train_set, list(labelled_sentences))

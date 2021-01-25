@@ -22,3 +22,5 @@ conda activate experiments && python train.py -W 1 -A maxent -T 1 -alpha 0.0 --b
 conda activate experiments && python train.py -W 4 8 -A lc -T 1 -alpha 0.3 --beta 0 -R 10000 -B 1 -I 0.01 -propagation 1
 conda activate experiments && python train.py -W 4 8 -A lc -T 1 -alpha 0.2 --beta 0 -R 10000 -B 1 -I 0.01 -propagation 1
 conda activate experiments && python train.py -W 4 8 -A lc -T 1 -alpha 0.1 --beta 0 -R 10000 -B 1 -I 0.01 -propagation 1
+
+conda activate experiments && python train.py -W 4 8 -A lc -T 1 -alpha 0.2 --beta 0 -R 10000 -B 1 -I 0.01 -propagation_sents_only 1

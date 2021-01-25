@@ -17,6 +17,7 @@ class Selector:
         self.all_round_windows = []
         self.beam_search_parameter = beam_search_parameter
         self.model = model
+        self.labelled_ngrams = {}
 
     def assign_agent(self, agent):
         self.agent = agent
@@ -36,7 +37,8 @@ class Selector:
         self.all_round_windows = window_scores
 
         # Initialise with best B scores
-        b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter, labelled_ngrams={})
+        b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter,
+                                          labelled_ngrams=self.labelled_ngrams)
                        for _ in range(self.beam_search_parameter)]
         b_solutions = [sol.add_window(window_scores[j], self.agent.train_set) for j, sol in enumerate(b_solutions)]
 
@@ -55,6 +57,8 @@ class Selector:
         labelled_ngrams = best_solution.labelled_ngrams
         budget_spent = best_solution.size
 
+        self.labelled_ngrams.update(labelled_ngrams)
+
         self.round_selection = best_windows.copy()
         return best_windows, labelled_ngrams, budget_spent
 
@@ -62,11 +66,13 @@ class Selector:
         pass
 
     def save(self, save_path):
+        savable_lookup = [{"tokens": k, "labels": v} for k, v in self.labelled_ngrams.items()]
         with open(os.path.join(save_path, "round_selection.pk"), "w") as f:
             json.dump(
                 {
                     "all_round_windows": self.all_round_windows,
-                    "round_selection_windows": self.round_selection
+                    "round_selection_windows": self.round_selection,
+                    "cumulative_labelled_ngrams": savable_lookup
                 }, f
             )
 

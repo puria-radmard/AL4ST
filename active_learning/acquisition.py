@@ -16,7 +16,7 @@ class RandomBaselineAcquisition(Acquisition):
         super().__init__(model=model)
 
     def score(self, sentences, lengths, tokens):
-        return [np.random.sample(length) for length in lengths]
+        return [np.random.randn(length) for length in lengths]
 
 
 class LowestConfidenceAcquisition(Acquisition):
