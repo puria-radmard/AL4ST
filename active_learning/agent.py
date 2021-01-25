@@ -181,7 +181,7 @@ class ActiveLearningAgent:
         out_windows = []
 
         for window in window_scores:
-            if self.index.new_window_unlabelled(window):# and self.index.is_partially_labelled(window[0]):
+            if self.index.new_window_unlabelled(window):
                 tokens = tokens_from_window(window, self.train_set)
                 if tokens in labelled_ngrams_lookup.keys():
                     out_windows.append(window)
@@ -228,7 +228,7 @@ class ActiveLearningAgent:
         for i in tqdm(range(len(self.train_set))):
             if self.index.is_partially_unlabelled(i):
                 unlabelled_sentences.add(i)
-            if self.index.is_partially_temporarily_labelled(i) or self.index.is_partially_labelled(i):
+            if self.index.is_partially_labelled(i): # or self.index.is_partially_temporarily_labelled(i):
                 labelled_sentences.add(i)
 
         unlabelled_subset = Subset(self.train_set, list(unlabelled_sentences))
