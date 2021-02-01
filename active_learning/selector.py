@@ -58,7 +58,6 @@ class Selector:
         budget_spent = best_solution.size
 
         self.labelled_ngrams.update(labelled_ngrams)
-
         self.round_selection = best_windows.copy()
         return best_windows, labelled_ngrams, budget_spent
 

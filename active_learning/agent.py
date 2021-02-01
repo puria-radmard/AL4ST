@@ -151,6 +151,8 @@ class ActiveLearningAgent:
 
         labelled_ngrams_lookup = {k: v for k,v in labelled_ngrams_lookup.items() if sum(v)}
 
+        # Simplify this whole section pls
+
         total_tokens = 0
 
         for i, r, _ in best_window_scores:
@@ -173,7 +175,7 @@ class ActiveLearningAgent:
         logging.info(f'added {total_tokens} words to index mapping, of which {budget_spent} manual')
 
         # No more windows of this size left
-        if len(best_window_scores) == len(window_scores):
+        if manual_cost < self.round_size:
             self.selector.reduce_window_size()
 
     def propagate_labels(self, window_scores, labelled_ngrams_lookup):
