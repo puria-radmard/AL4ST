@@ -20,7 +20,8 @@ class ActiveLearningAgent:
             selector_class,
             helper,
             device,
-            propagation_mode
+            propagation_mode,
+            budget_prop = 0.5
     ):
         """
         train_set: loaded from pickle
@@ -47,12 +48,13 @@ class ActiveLearningAgent:
         self.helper = helper
         self.device = device
         self.propagation_mode = propagation_mode
+        self.budget_prop = budget_prop
 
         # Dictionaries mapping {sentence idx: [list, of, word, idx]} for labelled and unlabelled words
         self.index = SentenceIndex(self)
 
         num_tokens = sum([len(sentence) for sentence, _, _ in self.train_set])
-        self.budget = num_tokens
+        self.budget = num_tokens * budget_prop
         self.initial_budget = self.budget
 
         self.unlabelled_set = None
