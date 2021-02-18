@@ -4,6 +4,9 @@ import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import weight_norm
+from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence
+
+from utils import prepare_sequence
 
 
 class ConvBlock(nn.Module):
@@ -197,6 +200,8 @@ class Model(nn.Module):
             char_channels,
             char_padding_idx,
             char_kernel_size,
+            char_set,
+            vocab,
             weight,
             word_embedding_size,
             word_channels,
@@ -207,6 +212,9 @@ class Model(nn.Module):
             T
     ):
         super(Model, self).__init__()
+
+        self.char_set = char_set
+        self.vocab = vocab
         self.char_encoder = CharEncoder(
             charset_size,
             char_embedding_size,
@@ -237,7 +245,31 @@ class Model(nn.Module):
         self.init_weights()
         self.T = T
 
-    def forward(self, word_input, char_input, anneal=False):
+    def forward(self, word_input, anneal=False):
+
+        char_idx = []
+        for sentence in word_input:
+            sentence_chars = []
+            for token_idx in sentence:
+                token_chars = []
+                token = self.vocab.idx2key[token_idx]
+                if len(token) <= 20:
+                    token_chars.append(
+                        prepare_sequence(token, self.charset)
+                        + [self.charset["<pad>"]] * (20 - len(token))
+                    )
+                else:
+                    token_chars.append(prepare_sequence(token[0:13] + token[-7:], self.charset))
+
+                sentence_chars.append(token_chars.copy())
+            char_idx.append(sentence_chars.copy())
+
+        char_input, _ = pad_packed_sequence(
+            pack_sequence([torch.LongTensor(_) for _ in char_idx], enforce_sorted=False),
+            batch_first=True,
+            padding_value=self.charset["<pad>"],
+        )
+
         batch_size = word_input.size(0)
         seq_len = word_input.size(1)
         char_output = self.char_encoder(char_input.reshape(-1, char_input.size(2))).reshape(

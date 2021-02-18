@@ -48,6 +48,7 @@ def configure_al_agent(args, device, model, train_set, helper):
         batch_size=args.batch_size,
         helper=helper,
         device=device,
+        model=model,
         propagation_mode=args.propagation_mode
     )
 

@@ -94,19 +94,22 @@ class Selector:
 
     def windows_selection(self, indices_and_word_scores):
         out_list = []
-        for lt in indices_and_word_scores:
-            score = self.score_aggregation(lt[1])
+        for idx, scores in indices_and_word_scores:
+            score = self.score_aggregation(scores)
             if not np.isnan(score):  # i.e. does not overlap with already labelled words
-                out_list.append((lt[0], score))
+                out_list.append({"bounds": idx, "score": score})
 
         return out_list
 
+    # NOT USED ANYMORE
     def get_batch(self, batch, batch_indices, agent):
         """
         Same as the original get batch, except targets are now given with a dimension of size num_tags in there.
         If the word is used in training and appears in self.labelled_idx, this is just one hot encoding
         else, it is the probability distribution that the most latest model has predicted
         """
+
+        raise NotImplementedError("Not meant to be used")
 
         padded_sentences, padded_tokens, padded_tags, lengths = \
             [a.to(agent.device) for a in self.helper.get_batch(batch)]
@@ -154,9 +157,10 @@ class SentenceSelector(Selector):
             For this strategy, entries is one element, with all the indices of this sentence
         """
         score = self.score_aggregation(word_scores)
-        return [((0, len(word_scores)), score)]
+        return [{"bounds": (0, len(word_scores)), "score": score}]
 
     def get_batch(self, batch, **args):
+        raise NotImplementedError("Not meant to be used")
         """
         No model predictions required!
         self_supervision mask is all zeros, since everything in the sentence is labelled

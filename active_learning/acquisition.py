@@ -6,7 +6,7 @@ class Acquisition:
     def __init__(self, model):
         self.model = model
 
-    def score(self, sentences, lengths, tokens):
+    def score(self, preds, lengths):
         pass
 
 
@@ -15,7 +15,7 @@ class RandomBaselineAcquisition(Acquisition):
     def __init__(self, model):
         super().__init__(model=model)
 
-    def score(self, sentences, lengths, tokens):
+    def score(self, preds, lengths):
         return [np.random.randn(length) for length in lengths]
 
 
@@ -24,10 +24,9 @@ class LowestConfidenceAcquisition(Acquisition):
     def __init__(self, model):
         super().__init__(model=model)
 
-    def score(self, sentences, lengths, tokens):
+    def score(self, preds, lengths):
         # logits (batch_size x sent_length x num_tags [193])
-        y_hat = self.model(sentences, tokens, anneal=True).detach().cpu()
-        scores = -y_hat.max(dim=-1).values  # negative highest logits (batch_size x sent_length)
+        scores = -preds.max(dim=-1).values  # negative highest logits (batch_size x sent_length)
         return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
 
 
@@ -36,10 +35,9 @@ class MaximumEntropyAcquisition(Acquisition):
     def __init__(self, model):
         super().__init__(model=model)
 
-    def score(self, sentences, lengths, tokens):
+    def score(self, preds, lengths):
         # logits (batch_size x sent_length x num_tags [193])
-        y_hat = self.model(sentences, tokens, anneal=True).detach().cpu()
-        scores = torch.sum(-y_hat * torch.exp(y_hat), dim=-1)  # entropies of shape (batch_size x sent_length)
+        scores = torch.sum(-preds * torch.exp(preds), dim=-1)  # entropies of shape (batch_size x sent_length)
         return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
 
 

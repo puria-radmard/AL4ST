@@ -11,6 +11,7 @@ from torch import optim
 from torch._utils import _accumulate
 
 from active_learning.helper import configure_al_agent
+from active_learning.util_classes import ActiveLearningDataset
 from model.ner_model import Model
 from model.utils import Helper
 from training_utils import *
@@ -241,11 +242,12 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
     for idx, batch_indices in enumerate(sampler):
 
         model.eval()
-        sentences, tokens, targets, lengths, self_supervision_mask = [a.to(device) for a in agent.get_batch(idx)]
+        sentences, targets, lengths, self_supervision_mask = \
+            [a.to(device) for a in agent.train_set.get_batch(batch_indices, labels_important=True)]
         model.train()
 
         optimizer.zero_grad()
-        output = model(sentences, tokens)
+        output = model(sentences)
         # output in shape [batch_size, length_of_sentence, num_tags (193)]
 
         # output = pack_padded_sequence(output, lengths.cpu(), batch_first=True).data
@@ -294,10 +296,10 @@ def evaluate(model, data_sampler, dataset, helper, criterion, device):
     tp_fn_total = 0
     with torch.no_grad():
         for batch_indices in data_sampler:
-            batch = [dataset[j] for j in batch_indices]
-            sentences, tokens, targets, lengths = [a.to(device) for a in helper.get_batch(batch)]
 
-            output = model(sentences, tokens)
+            sentences, targets, lengths = [a.to(device) for a in dataset.get_batch(batch_indices, labels_important=True)]     # Labels important here?
+
+            output = model(sentences)
             tp, tp_fp, tp_fn = helper.measure(output, targets, lengths)
 
             tp_total += tp
@@ -505,6 +507,16 @@ def active_learning_train(args):
 
     # TODO: make the path a parameter
     helper, word_embeddings, train_set, test_set, tag_set = load_dataset(args.data_path)
+    train_set = ActiveLearningDataset(
+        data=[d[0] for d in train_set],
+        labels=nn.functional.one_hot([d[-1] for d in test_set], len(tag_set.idx2key)),
+        label_form=lambda x: (x.shape[0], tag_set.idx2key)
+    )
+    test_set = ActiveLearningDataset(
+        data=[d[0] for d in test_set],
+        labels=nn.functional.one_hot([d[-1] for d in test_set]),
+        label_form=lambda x: (x.shape[0], tag_set.idx2key)
+    )
 
     # CHANGED FOR DEBUG
     val_size = int(0.01 * len(train_set))
