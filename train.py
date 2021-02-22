@@ -11,7 +11,7 @@ from torch import optim
 from torch._utils import _accumulate
 
 from active_learning.helper import configure_al_agent
-from active_learning.util_classes import ActiveLearningDataset
+from active_learning.util_classes import OneDimensionalSequenceTaggingDataset, SentenceIndex
 from model.ner_model import Model
 from model.utils import Helper
 from training_utils import *
@@ -487,7 +487,7 @@ def load_dataset(path):
     # relation_labels = Index()
     # relation_labels.load(f"{path}/relation_labels.txt")
 
-    train_data = load(f"{path}/train.pk")
+    train_data = load(f"{path}/train.pk")[:1000]
     test_data = load(f"{path}/test.pk")
 
     word_embeddings = np.load(f"{path}/word2vec.vectors.npy")
@@ -507,14 +507,22 @@ def active_learning_train(args):
 
     # TODO: make the path a parameter
     helper, word_embeddings, train_set, test_set, tag_set = load_dataset(args.data_path)
-    train_set = ActiveLearningDataset(
+    train_set = OneDimensionalSequenceTaggingDataset(
         data=[d[0] for d in train_set],
-        labels=nn.functional.one_hot([d[-1] for d in test_set], len(tag_set.idx2key)),
+        labels=[torch.nn.functional.one_hot(torch.tensor(d[-1]), len(tag_set)) for d in train_set],
+        index_class=SentenceIndex,
+        semi_supervision_multiplier=args.beta,
+        padding_token=helper.vocab["<pad>"],
+        empty_tag=helper.tag_set["O"],
         label_form=lambda x: (x.shape[0], tag_set.idx2key)
     )
-    test_set = ActiveLearningDataset(
+    test_set = OneDimensionalSequenceTaggingDataset(
         data=[d[0] for d in test_set],
-        labels=nn.functional.one_hot([d[-1] for d in test_set]),
+        labels=[torch.nn.functional.one_hot(torch.tensor(d[-1]), len(tag_set)) for d in train_set],
+        index_class=SentenceIndex,
+        semi_supervision_multiplier=args.beta,
+        padding_token=helper.vocab["<pad>"],
+        empty_tag=helper.tag_set["O"],
         label_form=lambda x: (x.shape[0], tag_set.idx2key)
     )
 
