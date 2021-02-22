@@ -48,7 +48,7 @@ class ActiveLearningAgent:
         self.budget_prop = budget_prop
         self.window_class = SentenceSubsequence     # parameterise this
 
-        num_units = sum([len(instance) for instance in self.train_set.data])
+        num_units = sum([len(instance) for instance in self.train_set.data])    # parameterise this
         self.budget = num_units * budget_prop
         self.initial_budget = self.budget
 
@@ -73,6 +73,9 @@ class ActiveLearningAgent:
 
     def budget_spent(self):
         return self.initial_budget - self.budget
+
+    def num_instances(self):
+        return sum([len(l) for l in self.labelled_set])
 
     def save(self, save_path):
         self.train_set.index.save(save_path)
@@ -135,7 +138,8 @@ class ActiveLearningAgent:
         if self.budget < 0:
             logging.warning('no more budget left!')
 
-        labelled_ngrams_lookup = {k: v for k,v in labelled_ngrams_lookup.items() if sum(v)}
+        # This is a weak rule anyway but maybe parameterise the empty class?
+        labelled_ngrams_lookup = {k: v for k,v in labelled_ngrams_lookup.items() if v[:,1:].sum()}
 
         total_units = 0
         for window in best_window_scores:
@@ -162,10 +166,11 @@ class ActiveLearningAgent:
 
         for window in all_windows:
             if self.train_set.index.new_window_unlabelled(window):
-                units = self.train_set.data_from_window(window)
+                units = tuple(self.train_set.data_from_window(window))
                 if units in labelled_ngrams_lookup.keys():
                     out_windows.append(window)
                     self.train_set.add_temp_labels(window, labelled_ngrams_lookup[units])  # Move lookup to dataset class too!!!
+                    self.train_set.index.temporarily_label_window(window)
 
         return out_windows
 
@@ -183,8 +188,7 @@ class ActiveLearningAgent:
         for batch_indices in tqdm(self.unlabelled_set):
             # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter
             # for functionality
-            batch = [self.train_set.data[i] for i in batch_indices]
-            instances, _, lengths = [a.to(self.device) for a in self.train_set.get_batch(batch, labels_important=False)]
+            instances, _, lengths, _ = [a.to(self.device) for a in self.train_set.get_batch(batch_indices, labels_important=False)]
             preds = self.model(instances, anneal=True).detach().cpu()
             batch_scores = self.acquisition.score(preds=preds, lengths=lengths)
             self.train_set.update_preds(batch_indices, preds, lengths)
@@ -217,10 +221,12 @@ class ActiveLearningAgent:
         labelled_subset = Subset(self.train_set, list(labelled_instances))
 
         self.unlabelled_set = \
-            list(BatchSampler(SubsetRandomSampler(unlabelled_subset.indices), self.batch_size, drop_last=False))
+            list(BatchSampler(SubsetRandomSampler(list(unlabelled_instances)), self.batch_size, drop_last=False))
+            #list(BatchSampler(SubsetRandomSampler(unlabelled_subset.indices), self.batch_size, drop_last=False))
 
         self.labelled_set = \
-            list(BatchSampler(SubsetRandomSampler(labelled_subset.indices), self.batch_size, drop_last=False))
+            list(BatchSampler(SubsetRandomSampler(list(labelled_instances)), self.batch_size, drop_last=False))
+            #list(BatchSampler(SubsetRandomSampler(labelled_subset.indices), self.batch_size, drop_last=False))
 
     def __iter__(self):
         return self

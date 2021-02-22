@@ -69,8 +69,8 @@ class Selector:
         with open(os.path.join(save_path, "round_selection.pk"), "w") as f:
             json.dump(
                 {
-                    "all_round_windows": self.all_round_windows,
-                    "round_selection_windows": self.round_selection,
+                    "all_round_windows": [w.savable() for w in self.all_round_windows],
+                    "round_selection_windows": [w.savable() for w in self.round_selection],
                     "cumulative_labelled_ngrams": savable_lookup
                 }, f
             )

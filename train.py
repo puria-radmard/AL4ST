@@ -30,7 +30,9 @@ def random_split(dataset, lengths):
         raise ValueError("Sum of input lengths does not equal the length of the input dataset!")
 
     indices = torch.randperm(sum(lengths)).tolist()
-    return indices, [Subset(dataset, indices[offset - length:offset]) for offset, length in zip(_accumulate(lengths), lengths)]
+    slicers = [indices[offset - length:offset] for offset, length in zip(_accumulate(lengths), lengths)]
+
+    return indices, [[dataset[s] for s in sl] for sl in slicers]
 
 
 def configure_logger():
@@ -297,7 +299,7 @@ def evaluate(model, data_sampler, dataset, helper, criterion, device):
     with torch.no_grad():
         for batch_indices in data_sampler:
 
-            sentences, targets, lengths = [a.to(device) for a in dataset.get_batch(batch_indices, labels_important=True)]     # Labels important here?
+            sentences, targets, lengths, _ = [a.to(device) for a in dataset.get_batch(batch_indices, labels_important=True)]     # Labels important here?
 
             output = model(sentences)
             tp, tp_fp, tp_fn = helper.measure(output, targets, lengths)
@@ -340,7 +342,7 @@ def train_full(model, device, agent, helper, val_set, val_data_groups, original_
 
     start_time = time.time()
 
-    num_sentences = agent.index.get_number_partially_labelled_sentences()
+    num_sentences = agent.num_instances()
     num_words = agent.budget_spent()
 
     optimizer = getattr(optim, args.optim)(model.parameters(), lr=original_lr)
@@ -441,10 +443,10 @@ def log_round(root_dir, round_results, agent, test_loss, test_precision, test_re
         f.write("sent_length\tnum_labelled\tnum_temp_labelled\n")
 
         i = 0
-        for sentence_idx, labelled_idx in agent.index.labelled_idx.items():
+        for sentence_idx, labelled_idx in agent.train_set.index.labelled_idx.items(): # not used in final
 
-            num_unlabelled = len(agent.index.unlabelled_idx[sentence_idx])
-            num_temp_labelled = len(agent.index.temp_labelled_idx[sentence_idx])
+            num_unlabelled = len(agent.train_set.index.unlabelled_idx[sentence_idx])
+            num_temp_labelled = len(agent.train_set.index.temp_labelled_idx[sentence_idx])
             f.write(str(len(labelled_idx) + num_unlabelled + num_temp_labelled))
             f.write("\t")
             f.write(str(len(labelled_idx)))
@@ -487,7 +489,7 @@ def load_dataset(path):
     # relation_labels = Index()
     # relation_labels.load(f"{path}/relation_labels.txt")
 
-    train_data = load(f"{path}/train.pk")[:1000]
+    train_data = load(f"{path}/train.pk")
     test_data = load(f"{path}/test.pk")
 
     word_embeddings = np.load(f"{path}/word2vec.vectors.npy")
@@ -505,8 +507,11 @@ def active_learning_train(args):
 
     device = torch.device("cuda" if args.cuda else "cpu")
 
-    # TODO: make the path a parameter
     helper, word_embeddings, train_set, test_set, tag_set = load_dataset(args.data_path)
+    val_size = int(0.01 * len(train_set))
+    indices, (train_set, val_set) = random_split(train_set, [len(train_set) - val_size, val_size])
+
+
     train_set = OneDimensionalSequenceTaggingDataset(
         data=[d[0] for d in train_set],
         labels=[torch.nn.functional.one_hot(torch.tensor(d[-1]), len(tag_set)) for d in train_set],
@@ -514,27 +519,39 @@ def active_learning_train(args):
         semi_supervision_multiplier=args.beta,
         padding_token=helper.vocab["<pad>"],
         empty_tag=helper.tag_set["O"],
-        label_form=lambda x: (x.shape[0], tag_set.idx2key)
+        label_form=lambda x: (x.shape[0], len(tag_set.idx2key))
     )
-    test_set = OneDimensionalSequenceTaggingDataset(
-        data=[d[0] for d in test_set],
-        labels=[torch.nn.functional.one_hot(torch.tensor(d[-1]), len(tag_set)) for d in train_set],
-        index_class=SentenceIndex,
-        semi_supervision_multiplier=args.beta,
-        padding_token=helper.vocab["<pad>"],
-        empty_tag=helper.tag_set["O"],
-        label_form=lambda x: (x.shape[0], tag_set.idx2key)
-    )
-
-    # CHANGED FOR DEBUG
-    val_size = int(0.01 * len(train_set))
-    indices, (train_set, val_set) = random_split(train_set, [len(train_set) - val_size, val_size])
 
     # [vocab[a] for a in test_data[0][0]]   gives a sentence
     # [tag_set[a] for a in test_data[0][2]] gives the corresponding tagseq
 
     val_data_groups = group(val_set, [10, 20, 30, 40, 50, 60])
     test_data_groups = group(test_set, [10, 20, 30, 40, 50, 60])
+
+    test_set = OneDimensionalSequenceTaggingDataset(
+        data=[d[0] for d in test_set],
+        labels=[torch.nn.functional.one_hot(torch.tensor(d[-1]), len(tag_set)) for d in test_set],
+        index_class=SentenceIndex,
+        semi_supervision_multiplier=args.beta,
+        padding_token=helper.vocab["<pad>"],
+        empty_tag=helper.tag_set["O"],
+        label_form=lambda x: (x.shape[0], len(tag_set.idx2key))
+    )
+
+    val_set = OneDimensionalSequenceTaggingDataset(
+        data=[d[0] for d in val_set],
+        labels=[torch.nn.functional.one_hot(torch.tensor(d[-1]), len(tag_set)) for d in val_set],
+        index_class=SentenceIndex,
+        semi_supervision_multiplier=args.beta,
+        padding_token=helper.vocab["<pad>"],
+        empty_tag=helper.tag_set["O"],
+        label_form=lambda x: (x.shape[0], len(tag_set.idx2key))
+    )
+
+    for i in val_set.index.labelled_idx:
+        val_set.index.label_instance(i)
+    for i in test_set.index.labelled_idx:
+        test_set.index.label_instance(i)
 
     word_embeddings = torch.tensor(word_embeddings)
     word_embedding_size = word_embeddings.size(1)
@@ -559,6 +576,8 @@ def active_learning_train(args):
         char_channels=char_channels,
         char_padding_idx=helper.charset["<pad>"],
         char_kernel_size=args.char_kernel_size,
+        char_set=helper.charset,
+        vocab=helper.vocab,
         weight=word_embeddings,
         word_embedding_size=word_embedding_size,
         word_channels=word_channels,
@@ -567,7 +586,7 @@ def active_learning_train(args):
         dropout=args.dropout,
         emb_dropout=args.emb_dropout,
         T=args.temperature
-    ).to(device)
+    )._to(device)
 
     agent = configure_al_agent(args, device, model, train_set, helper)
     agent.init(int(len(train_set) * args.initprop))

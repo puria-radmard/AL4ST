@@ -19,6 +19,20 @@ def total_sum(thing):
         return np.sum(thing)
 
 
+class ActiveLearningSubset:
+
+    def __init__(self, dataset, indices):
+        self.indices = indices
+        self.dataset = dataset
+        self.access_mode = 'data'
+
+    def __getattr__(self, item):
+        self.access_mode = item
+
+    def __getitem__(self, idx):
+        return self.dataset.__getattr__(self.access_mode)[idx]
+
+
 class ActiveLearningDataset:
 
     def __init__(self,
@@ -34,18 +48,22 @@ class ActiveLearningDataset:
         data = [np.array(d) for d in data]
         labels = [np.array(l) for l in labels]
         temp_labels = [np.ones_like(l)*np.nan for l in labels]
-        last_preds = [[np.ones(label_form(d))*np.nan for d in data]]    # Preds and labels must be the same shape!!
+        last_preds = [np.ones(label_form(d))*np.nan for d in data]   # Preds and labels must be the same shape!!
 
         assert all(l.shape == label_form(data[i]) for i, l in enumerate(labels))
 
         # Non-rectangular np array
         self.data = data
         self.labels = labels
-        self.index = index_class(self)
+        if index_class.__class__ == type:
+            self.index = index_class(self)
+        else:
+            self.index = index_class
         self.temp_labels = temp_labels
         self.label_form = label_form
         self.last_preds = last_preds
         self.semi_supervision_multiplier = semi_supervision_multiplier
+
 
     def add_data(self, new_data):
         new_data = [np.array(nd) for nd in new_data]
@@ -73,10 +91,10 @@ class ActiveLearningDataset:
 
     def __getitem__(self, idx):
         if isinstance(idx, int):
-            return ActiveLearningDataset([self.data[idx]], [self.labels[idx]])
+            return ActiveLearningDataset([self.data[idx]], [self.labels[idx]], self.index, self.semi_supervision_multiplier, self.label_form)
         elif isinstance(idx, slice):
             start, stop, step = idx.indices(len(self))
-            return ActiveLearningDataset(self.data[start:stop:step], self.labels[start:stop:step])
+            return ActiveLearningDataset(self.data[start:stop:step], self.labels[start:stop:step], self.index, self.semi_supervision_multiplier, self.label_form)
 
     def __len__(self):
         return len(self.data)
@@ -92,7 +110,7 @@ class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
 
     def update_preds(self, batch_indices, preds, lengths):
         for j, i in enumerate(batch_indices):
-            assert self.last_preds[i].shape == preds[j][:lengths[j]]
+            assert self.last_preds[i].shape == preds[j][:lengths[j]].shape
             self.last_preds[i] = preds[j][:lengths[j]]
 
     def get_batch(self, batch_indices, labels_important: bool): # batch_indices is a list, e.g. one of labelled_set
@@ -128,10 +146,10 @@ class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
                     if token_idx in self.index.labelled_idx[sentence_index]:
                         pass
                     elif token_idx in self.index.temp_labelled_idx[sentence_index]:
-                        padded_tags[j, token_idx] = self.temp_labels[sentence_index][token_idx]
+                        padded_tags[j, token_idx] = torch.tensor(self.temp_labels[sentence_index][token_idx])
                     elif token_idx in self.index.unlabelled_idx[sentence_index]:
                         padded_tags[j, token_idx] = \
-                            torch.exp(self.last_preds[sentence_index][token_idx])       # Maybe change this exp?
+                            torch.exp(torch.tensor(self.last_preds[sentence_index][token_idx]))       # Maybe change this exp?
                         semi_supervision_mask[j, token_idx] = self.semi_supervision_multiplier
                     else:  # Padding
                         continue
@@ -148,7 +166,7 @@ class SentenceIndex:
     def __init__(self, dataset):
         self.__number_partially_labelled_sentences = 0
         self.labelled_idx = {j: set() for j in range(len(dataset.data))}
-        self.unlabelled_idx = {j: set(range(len(dataset.data[j][0]))) for j in range(len(dataset.data))}
+        self.unlabelled_idx = {j: set(range(len(d))) for j, d in enumerate(dataset.data)}
         self.temp_labelled_idx = {j: set() for j in range(len(dataset.data))}
         self.dataset = dataset
 
@@ -169,7 +187,7 @@ class SentenceIndex:
         self.temp_labelled_idx[window.i].update(range(*window.bounds))
 
     def new_window_unlabelled(self, new_window):
-        if set(range(*new_window.range)).intersection(self.labelled_idx[new_window.i]):
+        if set(range(*new_window.bounds)).intersection(self.labelled_idx[new_window.i]):
             return False
         else:
             return True
@@ -201,6 +219,25 @@ class SentenceIndex:
                 res.append(scores[j])
         return res
 
+    def __getitem__(self, item):
+
+        if isinstance(item, int):
+            idx = [item]
+        elif isinstance(item, slice):
+            idx = list(range(*item.indices(len(self))))
+        elif isinstance(item, list):
+            idx = item
+        else:
+            raise TypeError(f"Cannot index SentenceIndex with type {type(item)}")
+
+        return {
+            i: {
+                "labelled_idx": self.labelled_idx[i],
+                "unlabelled_idx": self.unlabelled_idx[i],
+                "temp_labelled_idx": self.temp_labelled_idx[i]
+            } for i in self.labelled_idx
+        }
+
     def save(self, save_path):
         with open(os.path.join(save_path, "agent_index.pk"), "w") as f:
             json.dump(
@@ -222,6 +259,9 @@ class SentenceSubsequence:
         self.i = sentence_index
         self.score = score
         self.size = bounds[1] - bounds[0]
+
+    def savable(self):
+        return [int(self.i), list(map(int, self.bounds)), float(self.score)]
 
     # def __getitem__(self, idx):
     #    return self.list[idx]
@@ -257,7 +297,7 @@ class BeamSearchSolution:
             init_overlap_index[new_window.i] = set(range(*new_window.bounds))  # Need to generalise this
         new_ngram = train_set.data_from_window(new_window)
         ngram_annotations = train_set.labels_from_window(new_window)
-        self.labelled_ngrams[new_ngram] = ngram_annotations
+        self.labelled_ngrams[tuple(new_ngram)] = ngram_annotations
         return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B, self.labelled_ngrams,
                                   init_size=init_size, init_score=init_score, init_overlap_index=init_overlap_index)
 
@@ -293,7 +333,7 @@ class BeamSearchSolution:
             if self.new_window_unlabelled(window):
                 new_ngram = train_set.data_from_window(window)
                 # i.e. if we are allowing automatic labelling and we've already seen this ngram, then skip
-                if new_ngram in self.labelled_ngrams.keys() and allow_propagation:
+                if tuple(new_ngram) in self.labelled_ngrams.keys() and allow_propagation:
                     continue
                 else:
                     possible_node = self.add_window(window, train_set)
