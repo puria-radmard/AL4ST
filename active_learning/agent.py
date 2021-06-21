@@ -6,7 +6,6 @@ import json
 
 from torch.utils.data import BatchSampler, SubsetRandomSampler, Subset
 from tqdm import tqdm
-from .util_classes import SentenceSubsequence, OneDimensionalSequenceTaggingDataset
 
 
 class ActiveLearningAgent:
@@ -16,7 +15,6 @@ class ActiveLearningAgent:
             train_set,
             batch_size,
             round_size,
-            acquisition_class,
             selector_class,
             helper,
             model,
@@ -38,7 +36,6 @@ class ActiveLearningAgent:
         self.round_size = round_size
         self.batch_size = batch_size
         self.train_set = train_set
-        self.acquisition = acquisition_class
         self.selector = selector_class
         self.selector.assign_agent(self)
         self.helper = helper
@@ -46,7 +43,6 @@ class ActiveLearningAgent:
         self.device = device
         self.propagation_mode = propagation_mode
         self.budget_prop = budget_prop
-        self.window_class = SentenceSubsequence     # parameterise this
 
         num_units = sum([len(instance) for instance in self.train_set.data])    # parameterise this
         self.budget = num_units * budget_prop
@@ -66,8 +62,9 @@ class ActiveLearningAgent:
 
     def step(self):
         logging.info('step')
-        instance_scores: Dict[int, List[float]] = self.get_unitwise_scores()
-        self.update_index(instance_scores)
+        # TODO: type *everything*
+        self.update_dataset_attributes()
+        self.update_index()
         self.update_datasets()
         logging.info('finished step')
 
@@ -102,7 +99,7 @@ class ActiveLearningAgent:
             initialised with {budget_spent} words  |   remaining word budget: {self.budget}
             """)
 
-    def update_index(self, instance_scores):
+    def update_index(self):
         """
         After a full pass on the unlabelled pool, apply a policy to get the top scoring phrases and add them to
         self.labelled_idx.
@@ -117,22 +114,17 @@ class ActiveLearningAgent:
                 i: [1, 2, 3, 8, 9, 10, 11],
                 ...
             }
-            meaning words 5, 6, 7 of word j are chosen to be labelled.
+            meaning words 5, 6, 7 of word j are chosen to be labelled.def update_index
         """
         logging.info("update index")
 
         all_windows = []
-        for i, word_scores in tqdm(instance_scores.items()):
-            # Skip if already all labelled
-            if self.train_set.index.is_labelled(i):
-                continue
-            windows = self.selector.score_extraction(word_scores)
-            all_windows.extend(
-                [self.window_class(i, window["bounds"], window["score"]) for window in windows]
-            )
+        for i in tqdm(range(len(self.train_set))):
+            windows = self.selector.window_generation(i, self.train_set)
+            all_windows.extend(windows)
 
         all_windows.sort(key=lambda e: e.score, reverse=True)
-        best_window_scores, labelled_ngrams_lookup, budget_spent = \
+        best_windows, labelled_ngrams_lookup, budget_spent = \
             self.selector.select_best(all_windows, self.propagation_mode != 0)
         self.budget -= budget_spent
         if self.budget < 0:
@@ -142,7 +134,7 @@ class ActiveLearningAgent:
         labelled_ngrams_lookup = {k: v for k,v in labelled_ngrams_lookup.items() if v[:,1:].sum()}
 
         total_units = 0
-        for window in best_window_scores:
+        for window in best_windows:
             total_units += window.size
             self.train_set.index.label_window(window)
 
@@ -174,7 +166,7 @@ class ActiveLearningAgent:
 
         return out_windows
 
-    def get_unitwise_scores(self):
+    def update_dataset_attributes(self):
         """
         Score unlabelled instances in terms of their suitability to be labelled next.
         Add the highest scoring instance indices in the dataset to self.labelled_idx
@@ -183,24 +175,23 @@ class ActiveLearningAgent:
         if self.budget <= 0:
             logging.warning('no more budget left!')
 
-        instance_scores_no_nan = {}
         # logging.info('get sentence scores')
         for batch_indices in tqdm(self.unlabelled_set):
             # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter
             # for functionality
             instances, _, lengths, _ = [a.to(self.device) for a in self.train_set.get_batch(batch_indices, labels_important=False)]
-            preds = self.model(instances, anneal=True).detach().cpu()
-            batch_scores = self.acquisition.score(preds=preds, lengths=lengths)
-            self.train_set.update_preds(batch_indices, preds, lengths)
-            for j, i in enumerate(batch_indices):
-                instance_scores_no_nan[i] = batch_scores[j].tolist()
+            model_attrs = self.model(instances, anneal=True)
+            model_attrs = {k: v.detach().cpu().numpy() for k, v in model_attrs.items()}
+            self.train_set.update_attributes(batch_indices, model_attrs, lengths)
 
-        instance_scores = {}
-        for i, scores in instance_scores_no_nan.items():
-            instance_scores[i] = self.train_set.index.make_nan_if_labelled(i, scores)
+            # TODO: Move this to the dataset
+            # for j, i in enumerate(batch_indices):
+            #     instance_scores_no_nan[i] = batch_scores[j].detach()
 
-        self.round_all_word_scores = instance_scores_no_nan
-        return instance_scores
+        # TODO: Move this to the next function/to dataset class functionality
+        # instance_scores = {}
+        # for i, scores in instance_scores_no_nan.items():
+        #     instance_scores[i] = self.train_set.index.make_nan_if_labelled(i, scores)
 
     def update_datasets(self):
         unlabelled_instances = set()

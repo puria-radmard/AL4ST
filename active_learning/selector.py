@@ -9,18 +9,28 @@ from .util_classes import BeamSearchSolution
 
 class Selector:
 
-    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter, model):
+    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter, acquisition, window_class):
         self.helper = helper
         self.normalisation_index = normalisation_index
         self.round_size = round_size
         self.round_selection = []
         self.all_round_windows = []
         self.beam_search_parameter = beam_search_parameter
-        self.model = model
+        self.acquisition = acquisition
         self.labelled_ngrams = {}
+        self.window_class = window_class
+
+    def window_generation(self, i, dataset):    # Could work better as a decorator?
+        unit_scores = self.acquisition.score(i)
+        unit_scores = dataset.index.make_nan_if_labelled(i, unit_scores)
+        window_args = self.score_extraction(unit_scores)
+        return [self.window_class(i, window["bounds"], window["score"]) for window in window_args]
 
     def assign_agent(self, agent):
         self.agent = agent
+
+    def score_extraction(self, unit_scores):
+        return [{}]
 
     def score_aggregation(self, word_scores):
         """
@@ -65,13 +75,13 @@ class Selector:
         pass
 
     def save(self, save_path):
-        savable_lookup = [{"tokens": k, "labels": v} for k, v in self.labelled_ngrams.items()]
+        # savable_lookup = [{"tokens": k, "labels": v} for k, v in self.labelled_ngrams.items()]
         with open(os.path.join(save_path, "round_selection.pk"), "w") as f:
             json.dump(
                 {
                     "all_round_windows": [w.savable() for w in self.all_round_windows],
                     "round_selection_windows": [w.savable() for w in self.round_selection],
-                    "cumulative_labelled_ngrams": savable_lookup
+                    # "cumulative_labelled_ngrams": savable_lookup
                 }, f
             )
 
@@ -101,53 +111,14 @@ class Selector:
 
         return out_list
 
-    # NOT USED ANYMORE
-    def get_batch(self, batch, batch_indices, agent):
-        """
-        Same as the original get batch, except targets are now given with a dimension of size num_tags in there.
-        If the word is used in training and appears in self.labelled_idx, this is just one hot encoding
-        else, it is the probability distribution that the most latest model has predicted
-        """
-
-        raise NotImplementedError("Not meant to be used")
-
-        padded_sentences, padded_tokens, padded_tags, lengths = \
-            [a.to(agent.device) for a in self.helper.get_batch(batch)]
-        self.model.eval()
-        model_log_probs = self.model(padded_sentences, padded_tokens).detach().to(agent.device)
-        self.model.train()
-        self_supervision_mask = torch.ones(padded_tags.shape)
-
-        # Fill in the words that have not been queried
-        for sentence_idx, sentence_tags in enumerate(padded_tags):
-            sentence_index = batch_indices[sentence_idx]
-            for word_idx in range(int(lengths[sentence_idx])):
-                if word_idx in agent.index.labelled_idx[sentence_index] or \
-                        word_idx in agent.index.temp_labelled_idx[sentence_index]:  # Labelled or temporarily labelled
-                    pass
-                elif word_idx in agent.index.unlabelled_idx[sentence_index]:  # Not labelled
-                    padded_tags[sentence_idx, word_idx] = \
-                        torch.exp(model_log_probs[sentence_idx, word_idx])
-                    self_supervision_mask[sentence_idx, word_idx] = self.beta
-                else:  # Padding
-                    continue
-
-        return (
-            padded_sentences,
-            padded_tokens,
-            padded_tags,
-            lengths,
-            self_supervision_mask
-        )
-
 
 class SentenceSelector(Selector):
 
-    def __init__(self, helper, normalisation_index, round_size):
+    def __init__(self, helper, normalisation_index, round_size, acquisition, window_class):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=1, model=None)
+                         beam_search_parameter=1, acquisition=acquisition, window_class=window_class)
 
-    def score_extraction(self, word_scores):
+    def score_extraction(self, scores_list):
         """
         Input:
             scores_list: [list, of, scores, from, a, sentence, None, None]
@@ -156,25 +127,16 @@ class SentenceSelector(Selector):
             entries = [([list, of, word, idx], score), ...] for all possible extraction batches
             For this strategy, entries is one element, with all the indices of this sentence
         """
-        score = self.score_aggregation(word_scores)
-        return [{"bounds": (0, len(word_scores)), "score": score}]
-
-    def get_batch(self, batch, **args):
-        raise NotImplementedError("Not meant to be used")
-        """
-        No model predictions required!
-        self_supervision mask is all zeros, since everything in the sentence is labelled
-        """
-        padded_sentences, padded_tokens, padded_tags, lengths = self.helper.get_batch(batch)
-        self_supervision_mask = torch.ones(padded_tags.shape)
-        return padded_sentences, padded_tokens, padded_tags, lengths, self_supervision_mask
+        score = self.score_aggregation(scores_list)
+        return [{"bounds": (0, len(scores_list)), "score": score}]
 
 
 class FixedWindowSelector(Selector):
 
-    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, model):
+    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, acquisition, window_class):
         super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter, model=model)
+                         beam_search_parameter=beam_search_parameter, acquisition=acquisition,
+                         window_class=window_class)
         self.window_size = window_size
         self.beta = beta
 
@@ -204,9 +166,9 @@ class FixedWindowSelector(Selector):
 
 class VariableWindowSelector(Selector):
 
-    def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index, model):
+    def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index, acquisition, window_class):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter, model=model)
+                         beam_search_parameter=beam_search_parameter, acquisition=acquisition, window_class=window_class)
         self.window_range = window_range
         self.beta = beta
 

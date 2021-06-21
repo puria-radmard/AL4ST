@@ -288,9 +288,11 @@ class Model(nn.Module):
         y = self.decoder(word_output)
 
         if anneal:
-            return F.log_softmax(y / self.T, dim=2)
+            preds = F.log_softmax(y / self.T, dim=2)
         else:
-            return F.log_softmax(y, dim=2)
+            preds = F.log_softmax(y, dim=2)
+
+        return {"last_preds": preds}#, "embeddings": word_output}
 
     def init_weights(self):
         pass
