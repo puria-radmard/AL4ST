@@ -9,18 +9,28 @@ from .util_classes import BeamSearchSolution, total_sum
 
 class Selector:
 
-    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter, model):
+    def __init__(self, helper, normalisation_index: float, round_size, beam_search_parameter, acquisition, window_class):
         self.helper = helper
         self.normalisation_index = normalisation_index
         self.round_size = round_size
         self.round_selection = []
         self.all_round_windows = []
         self.beam_search_parameter = beam_search_parameter
-        self.model = model
+        self.acquisition = acquisition
         self.labelled_ngrams = {}
+        self.window_class = window_class
+
+    def window_generation(self, i, dataset):    # Could work better as a decorator?
+        unit_scores = self.acquisition.score(i)
+        unit_scores = dataset.index.make_nan_if_labelled(i, unit_scores)
+        window_args = self.score_extraction(unit_scores)
+        return [self.window_class(i, window["bounds"], window["score"]) for window in window_args]
 
     def assign_agent(self, agent):
         self.agent = agent
+
+    def score_extraction(self, unit_scores):
+        return [{}]
 
     def score_aggregation(self, word_scores):
         """
@@ -65,13 +75,13 @@ class Selector:
         pass
 
     def save(self, save_path):
-        savable_lookup = [{"tokens": k, "labels": v} for k, v in self.labelled_ngrams.items()]
+        # savable_lookup = [{"tokens": k, "labels": v} for k, v in self.labelled_ngrams.items()]
         with open(os.path.join(save_path, "round_selection.pk"), "w") as f:
             json.dump(
                 {
                     "all_round_windows": [w.savable() for w in self.all_round_windows],
                     "round_selection_windows": [w.savable() for w in self.round_selection],
-                    "cumulative_labelled_ngrams": savable_lookup
+                    # "cumulative_labelled_ngrams": savable_lookup
                 }, f
             )
 
@@ -118,11 +128,11 @@ class DimensionlessSelector(Selector):
 
 class SentenceSelector(Selector):
 
-    def __init__(self, helper, normalisation_index, round_size):
+    def __init__(self, helper, normalisation_index, round_size, acquisition, window_class):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=1, model=None)
+                         beam_search_parameter=1, acquisition=acquisition, window_class=window_class)
 
-    def score_extraction(self, word_scores):
+    def score_extraction(self, scores_list):
         """
         Input:
             scores_list: [list, of, scores, from, a, sentence, None, None]
@@ -131,15 +141,17 @@ class SentenceSelector(Selector):
             entries = [([list, of, word, idx], score), ...] for all possible extraction batches
             For this strategy, entries is one element, with all the indices of this sentence
         """
-        score = self.score_aggregation(word_scores)
-        return [{"bounds": (0, len(word_scores)), "score": score}]
+
+        score = self.score_aggregation(scores_list)
+        return [{"bounds": (0, len(scores_list)), "score": score}]
 
 
 class FixedWindowSelector(Selector):
 
-    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, model):
+    def __init__(self, helper, window_size, beta, round_size, beam_search_parameter, acquisition, window_class):
         super().__init__(helper=helper, normalisation_index=1.0, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter, model=model)
+                         beam_search_parameter=beam_search_parameter, acquisition=acquisition,
+                         window_class=window_class)
         self.window_size = window_size
         self.beta = beta
 
@@ -169,9 +181,9 @@ class FixedWindowSelector(Selector):
 
 class VariableWindowSelector(Selector):
 
-    def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index, model):
+    def __init__(self, helper, window_range, beta, round_size, beam_search_parameter, normalisation_index, acquisition, window_class):
         super().__init__(helper=helper, normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=beam_search_parameter, model=model)
+                         beam_search_parameter=beam_search_parameter, acquisition=acquisition, window_class=window_class)
         self.window_range = window_range
         self.beta = beta
 

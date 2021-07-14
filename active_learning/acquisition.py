@@ -1,29 +1,130 @@
 import numpy as np
 import torch
 
-class Acquisition:
 
-    def __init__(self, model):
-        self.model = model
+class AcquisitionAggregation:
 
-    def score(self, preds):
+
+    def __init__(self, functions, dataset):
+        self.functions = functions
+        self.dataset = dataset
+
+    def aggregation_step(self):
+        # This is for learning aggregations, e.g. LSA bandit set up
+        pass
+
+    def acquisition_aggregation(self, scores):
+        pass
+
+    def score(self, i):
+        scores = []
+        for function in self.functions:
+            scores.append(function.score(i))
+        return self.acquisition_aggregation(scores).reshape(-1)
+
+    def step(self):
+        self.aggregation_step()
+        for function in self.functions:
+            if isinstance(function, UnitwiseAcquisition):
+                pass
+            elif isinstance(function, DataAwareAcquisition):
+                function.step()
+            else:
+                raise NotImplementedError(f"{type(function)} not a function type")
+        pass
+    
+
+class SimpleAggregation(AcquisitionAggregation):
+    
+    def __init__(self, functions, dataset, weighting):
+        weighting_norm = sum(w**2 for w in weighting)**0.5
+        self.weighting = np.array([weighting])/weighting_norm
+        super(SimpleAggregation, self).__init__(functions, dataset)
+
+    def acquisition_aggregation(self, scores):
+        return self.weighting @ scores
+
+
+class LearningAggregation(AcquisitionAggregation):
+
+    def __init__(self, functions, dataset):
+        super(LearningAggregation, self).__init__(functions, dataset)
+        raise NotImplementedError
+
+    def acquisition_aggregation(self, scores):
+        raise NotImplementedError
+
+    def aggregation_step(self):
+        raise NotImplementedError
+
+
+class DataAwareAcquisition:
+
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def score(self, i):
+        pass
+
+    def step(self):
         pass
 
 
-class RandomBaselineAcquisition(Acquisition):
+class PredsKLAcquisition(DataAwareAcquisition):
 
-    def __init__(self, model):
-        super().__init__(model=model)
+    def __init__(self, dataset):
+        super().__init__(dataset=dataset)
+
+    def score(self, i):
+        preds = self.dataset.preds[i]
+        previous_preds = self.dataset.preds.prev_attr[i]
+        log_term = preds - previous_preds
+        kl_div = np.sum(preds * log_term, axis=-1)
+        return kl_div
+
+    def step(self):
+        pass
+
+
+class EmbeddingMigrationAcquisition(DataAwareAcquisition):
+
+    def __init__(self, dataset, embedding_name):
+        super().__init__(dataset=dataset)
+        self.embedding_name = embedding_name
+
+    def score(self, i):
+        embs = self.dataset.__getattr__(self.embedding_name)[i]
+        previous_embs = self.dataset.__getattr__(self.embedding_name).prev_attr[i]
+        euc = np.linalg.norm(embs - previous_embs, axis=-1)
+        return euc
+
+    def step(self):
+        pass
+
+
+class UnitwiseAcquisition:
+
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def score(self, i):
+        pass
+
+
+class RandomBaselineAcquisition(UnitwiseAcquisition):
+
+    def __init__(self, dataset):
+        super().__init__(dataset=dataset)
 
     def score(self, preds):
         scores_shape = preds.max(dim=-1)
         return torch.randn(scores_shape.shape)
 
 
-class LowestConfidenceAcquisition(Acquisition):
+class LowestConfidenceAcquisition(UnitwiseAcquisition):
 
-    def __init__(self, model):
-        super().__init__(model=model)
+    def __init__(self, dataset):
+        super().__init__(dataset=dataset)
 
     def score(self, preds):
         # logits (batch_size x sent_length x num_tags [193])
@@ -31,18 +132,17 @@ class LowestConfidenceAcquisition(Acquisition):
         return scores
 
 
-class MaximumEntropyAcquisition(Acquisition):
+class MaximumEntropyAcquisition(UnitwiseAcquisition):
 
-    def __init__(self, model):
-        super().__init__(model=model)
+    def __init__(self, dataset):
+        super().__init__(dataset=dataset)
 
     def score(self, preds):
         # logits (batch_size x sent_length x num_tags [193])
         scores = torch.sum(-preds * torch.exp(preds), dim=-1)  # entropies of shape (batch_size x sent_length)
         return scores
 
-
-class BALDAcquisition(Acquisition):
+class BALDAcquisition(UnitwiseAcquisition):
     """
         SUSPENDED FOR NOW
     """
