@@ -175,7 +175,7 @@ def active_learning_train(args):
     val_set = OneDimensionalSequenceTaggingDataset(
         data=data_setify(val_set, 0),
         labels=[torch.nn.functional.one_hot(torch.tensor(d[-1]), len(tag_set)) for d in val_set],
-        index_class=SentenceIndex,
+        index_class=Index,
         semi_supervision_multiplier=args.beta,
         padding_token=helper.vocab["<pad>"],
         empty_tag=helper.tag_set["O"],

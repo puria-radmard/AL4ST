@@ -20,7 +20,8 @@ class ActiveLearningAgent:
             model,
             device,
             propagation_mode,
-            budget_prop=0.5
+            budget_prop=0.5,
+            window_class=SentenceSubsequence
     ):
         """
         score: function used to score single words
@@ -43,8 +44,9 @@ class ActiveLearningAgent:
         self.device = device
         self.propagation_mode = propagation_mode
         self.budget_prop = budget_prop
+        self.window_class = window_class     # parameterise this
 
-        num_units = sum([len(instance) for instance in self.train_set.data])    # parameterise this
+        num_units = sum([instance.size for instance in self.train_set.data])    # parameterise this
         self.budget = num_units * budget_prop
         self.initial_budget = self.budget
 
@@ -63,8 +65,8 @@ class ActiveLearningAgent:
     def step(self):
         logging.info('step')
         # TODO: type *everything*
-        self.update_dataset_attributes()
-        self.update_index()
+        instance_scores = self.update_dataset_attributes()
+        self.update_index(instance_scores)
         self.update_datasets()
         logging.info('finished step')
 
@@ -89,7 +91,7 @@ class ActiveLearningAgent:
         budget_spent = 0
         for i in randomly_selected_indices:
             self.train_set.index.label_instance(i)
-            budget_spent += len(self.train_set.data[i])
+            budget_spent += self.train_set.data[i].size
 
         self.budget -= budget_spent
 
@@ -99,7 +101,7 @@ class ActiveLearningAgent:
             initialised with {budget_spent} words  |   remaining word budget: {self.budget}
             """)
 
-    def update_index(self):
+    def update_index(self, instance_scores):
         """
         After a full pass on the unlabelled pool, apply a policy to get the top scoring phrases and add them to
         self.labelled_idx.
@@ -119,7 +121,7 @@ class ActiveLearningAgent:
         logging.info("update index")
 
         all_windows = []
-        for i in tqdm(range(len(self.train_set))):
+        for i, word_scores in tqdm(instance_scores.items()):
             windows = self.selector.window_generation(i, self.train_set)
             all_windows.extend(windows)
 
@@ -130,8 +132,6 @@ class ActiveLearningAgent:
         if self.budget < 0:
             logging.warning('no more budget left!')
 
-        # This is a weak rule anyway but maybe parameterise the empty class?
-        labelled_ngrams_lookup = {k: v for k,v in labelled_ngrams_lookup.items() if v[:,1:].sum()}
 
         total_units = 0
         for window in best_windows:
@@ -139,6 +139,9 @@ class ActiveLearningAgent:
             self.train_set.index.label_window(window)
 
         if self.propagation_mode:
+            # This is a weak rule anyway but maybe parameterise the empty class?
+            labelled_ngrams_lookup = {k: v for k, v in labelled_ngrams_lookup.items() if v[:, 1:].sum()}
+
             # This must come after labelling initial set
             propagated_windows = self.propagate_labels(all_windows, labelled_ngrams_lookup)
 
@@ -183,6 +186,19 @@ class ActiveLearningAgent:
             model_attrs = self.model(instances, anneal=True)
             model_attrs = {k: v.detach().cpu().numpy() for k, v in model_attrs.items()}
             self.train_set.update_attributes(batch_indices, model_attrs, lengths)
+      
+            batch_scores = self.acquisition.score(preds=self.train_set.last_preds)
+            batch_scores = self.train_set.process_scores(batch_scores, lengths)
+          
+            for j, i in enumerate(batch_indices):
+                instance_scores_no_nan[i] = batch_scores[j].tolist()
+
+        instance_scores = {}
+        for i, scores in instance_scores_no_nan.items():
+            instance_scores[i] = self.train_set.index.make_nan_if_labelled(i, scores)
+
+        self.round_all_word_scores = instance_scores_no_nan
+        return instance_scores
 
             # TODO: Move this to the dataset
             # for j, i in enumerate(batch_indices):

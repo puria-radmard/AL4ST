@@ -4,6 +4,7 @@ import torch
 
 class AcquisitionAggregation:
 
+
     def __init__(self, functions, dataset):
         self.functions = functions
         self.dataset = dataset
@@ -115,9 +116,9 @@ class RandomBaselineAcquisition(UnitwiseAcquisition):
     def __init__(self, dataset):
         super().__init__(dataset=dataset)
 
-    def score(self, i):
-        preds = self.dataset.last_preds[i]
-        return np.random.randn(len(preds))
+    def score(self, preds):
+        scores_shape = preds.max(dim=-1)
+        return torch.randn(scores_shape.shape)
 
 
 class LowestConfidenceAcquisition(UnitwiseAcquisition):
@@ -125,11 +126,10 @@ class LowestConfidenceAcquisition(UnitwiseAcquisition):
     def __init__(self, dataset):
         super().__init__(dataset=dataset)
 
-    def score(self, i):
+    def score(self, preds):
         # logits (batch_size x sent_length x num_tags [193])
-        preds = self.dataset.last_preds[i]
-        scores = -preds.max(axis=-1)  # negative highest logits (batch_size x sent_length)
-        return scores.reshape(-1)
+        scores = -preds.max(dim=-1).values  # negative highest logits (batch_size x sent_length)
+        return scores
 
 
 class MaximumEntropyAcquisition(UnitwiseAcquisition):
@@ -137,12 +137,10 @@ class MaximumEntropyAcquisition(UnitwiseAcquisition):
     def __init__(self, dataset):
         super().__init__(dataset=dataset)
 
-    def score(self, i):
+    def score(self, preds):
         # logits (batch_size x sent_length x num_tags [193])
-        preds = self.dataset.last_preds[i]
-        scores = np.sum(-preds * np.exp(preds), axis=-1)  # entropies of shape (batch_size x sent_length)
-        return scores.reshape(-1) #[scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
-
+        scores = torch.sum(-preds * torch.exp(preds), dim=-1)  # entropies of shape (batch_size x sent_length)
+        return scores
 
 class BALDAcquisition(UnitwiseAcquisition):
     """

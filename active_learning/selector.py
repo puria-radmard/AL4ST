@@ -4,7 +4,7 @@ import logging
 
 import torch
 import numpy as np
-from .util_classes import BeamSearchSolution
+from .util_classes import BeamSearchSolution, total_sum
 
 
 class Selector:
@@ -112,6 +112,20 @@ class Selector:
         return out_list
 
 
+class DimensionlessSelector(Selector):
+
+    def __init__(self, helper, round_size, model):
+        super().__init__(helper=helper, normalisation_index=1, round_size=round_size, beam_search_parameter=1,
+                         model=model)
+
+    def score_aggregation(self, score):
+        return float(score)
+
+    def score_extraction(self, score):
+        score = self.score_aggregation(score)
+        return [{"bounds": ..., "score": score}]
+
+
 class SentenceSelector(Selector):
 
     def __init__(self, helper, normalisation_index, round_size, acquisition, window_class):
@@ -127,6 +141,7 @@ class SentenceSelector(Selector):
             entries = [([list, of, word, idx], score), ...] for all possible extraction batches
             For this strategy, entries is one element, with all the indices of this sentence
         """
+
         score = self.score_aggregation(scores_list)
         return [{"bounds": (0, len(scores_list)), "score": score}]
 

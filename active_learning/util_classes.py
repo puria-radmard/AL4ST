@@ -1,3 +1,4 @@
+# noinspection PyInterpreter
 import json
 import os
 import numpy as np
@@ -18,6 +19,8 @@ def total_sum(thing):
             return np.sum(first_sum)
     elif isinstance(thing, np.ndarray):
         return np.sum(thing)
+    elif isinstance(thing, bool):
+        return 1 if thing else 0
 
 
 class ActiveLearningSubset:
@@ -143,6 +146,12 @@ class ActiveLearningDataset:
         """This requires specific implementations (or does it?)"""
         pass
 
+    def update_preds(self, batch_indices, preds, lengths):
+        pass
+
+    def process_scores(self, scores, lengths):
+        pass
+
     # def get_temporary_labels(self, i):
     #     temp_data = self.data[i]
     #     temp_labels = [self.data[i][j] if j in self.index.labelled_idx[i]
@@ -160,6 +169,53 @@ class ActiveLearningDataset:
         return len(self.data)
 
 
+class DimensionlessDataset(ActiveLearningDataset):
+
+    def __init__(self, data, labels, index_class, semi_supervision_multiplier,
+                 data_reading_method = lambda x: x,
+                 label_reading_method = lambda x: x):
+        super(DimensionlessDataset, self).__init__(data, labels, index_class, semi_supervision_multiplier, label_form=lambda data_point: ())
+        self.data_reading_method = data_reading_method
+        self.label_reading_method = label_reading_method
+
+    def update_preds(self, batch_indices, preds, lengths):
+        for j, i in enumerate(batch_indices):
+            # cannot check size since it might be a disk referencex
+            self.last_preds[i] = preds[j]
+
+    def process_scores(self, scores, lengths=None):
+        return scores
+
+    def get_batch(self, batch_indices, labels_important: bool):
+
+        X = torch.vstack([self.data_reading_method(self.data[i]) for i in batch_indices])
+        y = torch.vstack([self.label_reading_method(self.labels[i]) for i in batch_indices])
+        semi_supervision_mask = torch.ones(y.shape)
+
+        if labels_important:
+            # Fill in with semi-supervision labels
+            for j, label in enumerate(y):
+                instance_index = batch_indices[j]
+                if self.index.labelled_idx[instance_index]:
+                    pass
+                elif self.index.temp_labelled_idx[instance_index]:
+                    y[j] = self.temp_labels[instance_index]
+                elif self.index.unlabelled_idx[instance_index]:
+                    y[j] = torch.exp(torch.tensor(self.last_preds[instance_index]))
+                    semi_supervision_mask[j] = self.semi_supervision_multiplier
+                else:
+                    raise Exception("Instance index does not appear in any of the annotation status lists")
+
+            return X, y, torch.tensor([]), semi_supervision_mask
+
+        return (
+            X,
+            torch.tensor([]),
+            torch.tensor([]), # was lengths
+            semi_supervision_mask
+        )
+
+
 class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
 
     def __init__(self, data, labels, index_class, semi_supervision_multiplier, padding_token, empty_tag,
@@ -173,6 +229,9 @@ class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
             for j, i in enumerate(batch_indices):
                 assert self.__getattr__(attr_name)[i].shape == attr_value[j][:lengths[j]].shape
                 self.__getattr__(attr_name)[i] = attr_value[j][:lengths[j]]
+
+    def process_scores(self, scores, lengths):
+        return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
 
     def get_batch(self, batch_indices, labels_important: bool): # batch_indices is a list, e.g. one of labelled_set
         """
@@ -210,78 +269,66 @@ class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
                     else:  # Padding
                         continue
 
+            return (
+                padded_sentences,
+                padded_tags,
+                lengths,
+                semi_supervision_mask
+            )
+
         return (
             padded_sentences,
-            padded_tags,
+            torch.tensor([]),
             lengths,
             semi_supervision_mask
         )
 
 
-class SentenceIndex:
+class Index:
 
     def __init__(self, dataset):
-        self.__number_partially_labelled_sentences = 0
-        self.labelled_idx = {j: set() for j in range(len(dataset.data))}
-        self.unlabelled_idx = {j: set(range(len(d))) for j, d in enumerate(dataset.data)}
-        self.temp_labelled_idx = {j: set() for j in range(len(dataset.data))}
         self.dataset = dataset
+        self.number_partially_labelled_instances = 0
+        self.labelled_idx = None
+        self.unlabelled_idx = None
+        self.temp_labelled_idx = None
 
     def label_instance(self, i):
-        self.labelled_idx[i] = self.unlabelled_idx[i]
-        self.__number_partially_labelled_sentences += 1
-        self.unlabelled_idx[i] = set()
+        pass
 
     def label_window(self, window):
-        if not self.labelled_idx[window.i] and window.size > 0:
-            self.__number_partially_labelled_sentences += 1
-        self.labelled_idx[window.i].update(range(*window.bounds))
-        self.unlabelled_idx[window.i] -= set(range(*window.bounds))
-        self.temp_labelled_idx[window.i] -= set(range(*window.bounds))
+        pass
 
     def temporarily_label_window(self, window):
-        self.unlabelled_idx[window.i] -= set(range(*window.bounds))
-        self.temp_labelled_idx[window.i].update(range(*window.bounds))
+        pass
 
     def new_window_unlabelled(self, new_window):
-        if set(range(*new_window.bounds)).intersection(self.labelled_idx[new_window.i]):
-            return False
-        else:
-            return True
+        pass
 
     def is_partially_labelled(self, i):
-        return total_sum(self.labelled_idx[i]) > 0
+        return bool(total_sum(self.labelled_idx[i]))
 
     def is_partially_temporarily_labelled(self, i):
-        return total_sum(self.temp_labelled_idx[i]) > 0
+        return bool(total_sum(self.temp_labelled_idx[i]))
 
     def has_any_labels(self, i):
-        return self.is_partially_labelled(i) or self.is_partially_temporarily_labelled(i)
+        return bool(self.is_partially_labelled(i)) or bool(self.is_partially_temporarily_labelled(i))
 
     def is_labelled(self, i):
-        return total_sum(self.unlabelled_idx[i]) == 0
+        return not bool(total_sum(self.unlabelled_idx[i]))
 
     def is_partially_unlabelled(self, i):
-        return total_sum(self.unlabelled_idx[i]) > 0
+        return bool(total_sum(self.unlabelled_idx[i]))
 
     def get_number_partially_labelled_instances(self):
-        return self.__number_partially_labelled_instances
-
-    def make_nan_if_labelled(self, i, scores):
-        res = []
-        for j in range(len(scores)):
-            if j in self.labelled_idx[i]:
-                res.append(float('nan'))
-            else:
-                res.append(scores[j])
-        return res
+        return self.number_partially_labelled_instances
 
     def __getitem__(self, item):
 
         if isinstance(item, int):
             idx = [item]
         elif isinstance(item, slice):
-            idx = list(range(*item.indices(len(self))))
+            idx = list(range(*item.indices(len(self.labelled_idx))))
         elif isinstance(item, list):
             idx = item
         else:
@@ -292,8 +339,90 @@ class SentenceIndex:
                 "labelled_idx": self.labelled_idx[i],
                 "unlabelled_idx": self.unlabelled_idx[i],
                 "temp_labelled_idx": self.temp_labelled_idx[i]
-            } for i in self.labelled_idx
+            } for i in item
         }
+
+
+class DimensionlessIndex(Index):
+
+    def __init__(self, dataset):
+        super(DimensionlessIndex, self).__init__(dataset)
+        self.labelled_idx = {j: False for j in range(len(dataset.data))}
+        self.unlabelled_idx = {j: True for j, d in enumerate(dataset.data)}
+        self.temp_labelled_idx = {j: False for j in range(len(dataset.data))}
+
+    def label_instance(self, i):
+        self.number_partially_labelled_instances += 1
+        self.labelled_idx[i] = True
+        self.unlabelled_idx[i] = False
+
+    def label_window(self, window):
+        if not isinstance(window, DimensionlessAnnotationUnit):
+            raise TypeError("DimensionlessIndex requires DimensionlessAnnotationUnit")
+        self.label_instance(window.i)
+
+    def temporarily_label_window(self, window):
+        self.unlabelled_idx[window.i] = False
+        self.temp_labelled_idx[window.i] = True
+
+    def new_window_unlabelled(self, new_window):
+        return not self.labelled_idx[new_window.i]
+
+    def make_nan_if_labelled(self, i, scores):
+        # Zero-dimensional datapoints => no partial labelling to worry about
+        return scores
+
+    def save(self, save_path):
+        with open(os.path.join(save_path, "agent_index.pk"), "w") as f:
+            json.dump(
+                {
+                    "labelled_idx": self.labelled_idx,
+                    "unlabelled_idx": self.unlabelled_idx,
+                    "temporarily_labelled_idx": self.temp_labelled_idx,
+                },
+                f
+            )
+
+
+class SentenceIndex(Index):
+
+    def __init__(self, dataset):
+        super(SentenceIndex, self).__init__(dataset)
+        self.labelled_idx = {j: set() for j in range(len(dataset.data))}
+        self.unlabelled_idx = {j: set(range(len(d))) for j, d in enumerate(dataset.data)}
+        self.temp_labelled_idx = {j: set() for j in range(len(dataset.data))}
+
+    def label_instance(self, i):
+        if not self.is_partially_labelled(i):
+            self.number_partially_labelled_instances += 1
+        self.labelled_idx[i] = set(range(len(self.dataset.data[i])))
+        self.unlabelled_idx[i] = set()
+
+    def label_window(self, window):
+        if not self.labelled_idx[window.i] and window.size > 0:
+            self.number_partially_labelled_instances += 1
+        self.labelled_idx[window.i].update(range(*window.bounds))
+        self.unlabelled_idx[window.i] -= window.get_index_set()
+        self.temp_labelled_idx[window.i] -= window.get_index_set()
+
+    def temporarily_label_window(self, window):
+        self.unlabelled_idx[window.i] -= window.get_index_set()
+        self.temp_labelled_idx[window.i].update(window.get_index_set())
+
+    def new_window_unlabelled(self, new_window):
+        if new_window.get_index_set().intersection(self.labelled_idx[new_window.i]):
+            return False
+        else:
+            return True
+
+    def make_nan_if_labelled(self, i, scores):
+        res = []
+        for j in range(len(scores)):
+            if j in self.labelled_idx[i]:
+                res.append(float('nan'))
+            else:
+                res.append(scores[j])
+        return res
 
     def save(self, save_path):
         with open(os.path.join(save_path, "agent_index.pk"), "w") as f:
@@ -307,21 +436,46 @@ class SentenceIndex:
             )
 
 
-class SentenceSubsequence:
+class AnnotationUnit:
 
-    def __init__(self, sentence_index, bounds, score):
-        # self.list = [sentence_index, bounds, score]
-        self.slice = slice(*bounds)
+    def __init__(self, data_index, bounds, score):
+        self.i = data_index
         self.bounds = bounds
-        self.i = sentence_index
         self.score = score
+
+    def savable(self):
+        return [self.i, self.bounds, self.score]
+
+    def get_index_set(self):
+        return None
+
+
+class SentenceSubsequence(AnnotationUnit):
+
+    def __init__(self, data_index, bounds, score):
+        super(SentenceSubsequence, self).__init__(data_index, bounds, score)
         self.size = bounds[1] - bounds[0]
+        self.slice = slice(*bounds)
 
     def savable(self):
         return [int(self.i), list(map(int, self.bounds)), float(self.score)]
 
-    # def __getitem__(self, idx):
-    #    return self.list[idx]
+    def get_index_set(self):
+        return set(range(*self.bounds))
+
+
+class DimensionlessAnnotationUnit(AnnotationUnit):
+
+    def __init__(self, data_index, bounds, score):
+        super(DimensionlessAnnotationUnit, self).__init__(data_index, bounds, score)
+        self.size = 1
+        self.slice = ...
+
+    def savable(self):
+        return [int(self.i), None, float(self.score)]
+
+    def get_index_set(self):
+        return {0}
 
 
 class BeamSearchSolution:
@@ -349,12 +503,14 @@ class BeamSearchSolution:
         init_score = self.score + new_window.score
         init_overlap_index = self.overlap_index.copy()
         if new_window.i in init_overlap_index:
-            init_overlap_index[new_window.i] = init_overlap_index[new_window.i].union(set(range(*new_window.bounds))) # Need to generalise this
+            init_overlap_index[new_window.i] = init_overlap_index[new_window.i].union(new_window.get_index_set()) # Need to generalise this
         else:
-            init_overlap_index[new_window.i] = set(range(*new_window.bounds))  # Need to generalise this
+            init_overlap_index[new_window.i] = new_window.get_index_set()
         new_ngram = train_set.data_from_window(new_window)
-        ngram_annotations = train_set.labels_from_window(new_window)
-        self.labelled_ngrams[tuple(new_ngram)] = ngram_annotations
+        try:
+            self.labelled_ngrams[tuple(new_ngram)] = train_set.labels_from_window(new_window)
+        except TypeError:
+            self.labelled_ngrams[int(new_ngram)] = train_set.labels_from_window(new_window)
         return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B, self.labelled_ngrams,
                                   init_size=init_size, init_score=init_score, init_overlap_index=init_overlap_index)
 
@@ -377,7 +533,7 @@ class BeamSearchSolution:
             self.overlap_index[new_window.i] = set() # Just in case!
             return True
         else:
-            new_word_idx = set(range(*new_window.bounds))
+            new_word_idx = new_window.get_index_set()
             if self.overlap_index[new_window.i].intersection(new_word_idx):
                 return False
             else:
@@ -390,7 +546,7 @@ class BeamSearchSolution:
             if self.new_window_unlabelled(window):
                 new_ngram = train_set.data_from_window(window)
                 # i.e. if we are allowing automatic labelling and we've already seen this ngram, then skip
-                if tuple(new_ngram) in self.labelled_ngrams.keys() and allow_propagation:
+                if allow_propagation and tuple(new_ngram) in self.labelled_ngrams.keys(): # NEEDS FIXING FOR DIMENSIONLESS CASE
                     continue
                 else:
                     possible_node = self.add_window(window, train_set)
