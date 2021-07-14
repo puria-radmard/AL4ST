@@ -3,9 +3,7 @@ import json
 import os
 import numpy as np
 import torch
-from torch import nn
 from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence
-from typing import Callable
 
 
 def total_sum(thing):
@@ -39,11 +37,10 @@ class ActiveLearningSubset:
 
 class ALAttribute:
 
-    def __init__(self, name: str, unit_form: Callable, initialisation: list, cache: bool = False):
+    def __init__(self, name: str, initialisation: list, cache: bool = False):
         # might change cache to arbitrary length
 
         self.name = name
-        self.unit_form = unit_form
         self.attr = initialisation
         self.cache = cache
         if cache:
@@ -60,9 +57,9 @@ class ALAttribute:
 
     def generate_nans(self, new_data):
         if isinstance(new_data, list):
-            return [np.ones(self.unit_form(nd)) * np.nan for nd in new_data]
+            return [np.nan for nd in new_data]
         else:
-            return np.ones(self.unit_form(new_data)) * np.nan
+            return np.nan
 
     def get_attr_by_window(self, window):
         return self.attr[window.i][window.slice]
@@ -89,22 +86,18 @@ class ActiveLearningDataset:
                  index_class,
                  semi_supervision_multiplier,
                  al_attributes=[],
-                 label_form=lambda data_point: data_point.shape,
                  ):
 
         # When initialised with labels, they must be for all the data.
         # Data without labels (i.e. in the real, non-simulation case), must be added later with self.data
 
-        assert all(l.shape == label_form(data[i]) for i, l in enumerate(labels))
-
         self.attrs = {
-            "data": ALAttribute(name="data", unit_form=lambda d: d.shape, initialisation=[np.array(d) for d in data]),
-            "labels": ALAttribute(name="labels", unit_form=label_form, initialisation=[np.array(l) for l in labels]),
-            "temp_labels": ALAttribute(name="temp_labels", unit_form=label_form, initialisation=[np.ones_like(l)*np.nan for l in labels]),
-            "last_preds": ALAttribute(name="last_preds", unit_form=label_form, initialisation=[np.ones_like(l)*np.nan for l in labels], cache=True),
+            "data": ALAttribute(name="data", initialisation=[np.array(d) for d in data]),
+            "labels": ALAttribute(name="labels", initialisation=[np.array(l) for l in labels]),
+            "temp_labels": ALAttribute(name="temp_labels", initialisation=[np.nan for l in labels]),
+            "last_preds": ALAttribute(name="last_preds", initialisation=[np.nan for l in labels], cache=True),
         }
         self.attrs.update({ala.name: ala for ala in al_attributes})
-        self.label_form = label_form
         self.semi_supervision_multiplier = semi_supervision_multiplier
 
         if index_class.__class__ == type:
@@ -144,13 +137,13 @@ class ActiveLearningDataset:
 
     def update_attributes(self, batch_indices, new_attr, sizes):
         """This requires specific implementations (or does it?)"""
-        pass
+        raise NotImplementedError
 
     def update_preds(self, batch_indices, preds, lengths):
-        pass
+        raise NotImplementedError
 
     def process_scores(self, scores, lengths):
-        pass
+        raise NotImplementedError
 
     # def get_temporary_labels(self, i):
     #     temp_data = self.data[i]
@@ -174,14 +167,14 @@ class DimensionlessDataset(ActiveLearningDataset):
     def __init__(self, data, labels, index_class, semi_supervision_multiplier,
                  data_reading_method = lambda x: x,
                  label_reading_method = lambda x: x):
-        super(DimensionlessDataset, self).__init__(data, labels, index_class, semi_supervision_multiplier, label_form=lambda data_point: ())
+        super(DimensionlessDataset, self).__init__(data, labels, index_class, semi_supervision_multiplier)
         self.data_reading_method = data_reading_method
         self.label_reading_method = label_reading_method
 
-    def update_preds(self, batch_indices, preds, lengths):
-        for j, i in enumerate(batch_indices):
-            # cannot check size since it might be a disk referencex
-            self.last_preds[i] = preds[j]
+    def update_attributes(self, batch_indices, new_attr_dict, lengths):
+        for attr_name, attr_value in new_attr_dict.items():
+            for j, i in enumerate(batch_indices):
+                self.__getattr__(attr_name)[i] = attr_value[j]
 
     def process_scores(self, scores, lengths=None):
         return scores
@@ -219,15 +212,14 @@ class DimensionlessDataset(ActiveLearningDataset):
 class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
 
     def __init__(self, data, labels, index_class, semi_supervision_multiplier, padding_token, empty_tag,
-                 al_attributes=[], label_form=lambda data_point: data_point.shape):
-        super().__init__(data, labels, index_class, semi_supervision_multiplier, al_attributes, label_form=label_form)
+                 al_attributes=[]):
+        super().__init__(data, labels, index_class, semi_supervision_multiplier, al_attributes)
         self.empty_tag = empty_tag
         self.padding_token = padding_token
 
     def update_attributes(self, batch_indices, new_attr_dict, lengths):
         for attr_name, attr_value in new_attr_dict.items():
             for j, i in enumerate(batch_indices):
-                assert self.__getattr__(attr_name)[i].shape == attr_value[j][:lengths[j]].shape
                 self.__getattr__(attr_name)[i] = attr_value[j][:lengths[j]]
 
     def process_scores(self, scores, lengths):
@@ -294,16 +286,16 @@ class Index:
         self.temp_labelled_idx = None
 
     def label_instance(self, i):
-        pass
+        raise NotImplementedError
 
     def label_window(self, window):
-        pass
+        raise NotImplementedError
 
     def temporarily_label_window(self, window):
-        pass
+        raise NotImplementedError
 
     def new_window_unlabelled(self, new_window):
-        pass
+        raise NotImplementedError
 
     def is_partially_labelled(self, i):
         return bool(total_sum(self.labelled_idx[i]))
@@ -476,90 +468,3 @@ class DimensionlessAnnotationUnit(AnnotationUnit):
 
     def get_index_set(self):
         return {0}
-
-
-class BeamSearchSolution:
-    def __init__(self, windows, max_size, B, labelled_ngrams, init_size=None, init_score=None, init_overlap_index={}):
-        self.windows = windows
-        if not init_score:
-            self.score = sum([w.score for w in windows])
-        else:
-            self.score = init_score
-        if not init_size:
-            self.size = sum([w.size for w in windows])
-        else:
-            self.size = init_size
-        self.overlap_index = init_overlap_index
-        self.max_size = max_size
-        self.lock = False
-        self.B = B
-        self.labelled_ngrams = labelled_ngrams
-
-    def add_window(self, new_window, train_set):
-        if self.size >= self.max_size:
-            self.lock = True
-            return self
-        init_size = self.size + new_window.size
-        init_score = self.score + new_window.score
-        init_overlap_index = self.overlap_index.copy()
-        if new_window.i in init_overlap_index:
-            init_overlap_index[new_window.i] = init_overlap_index[new_window.i].union(new_window.get_index_set()) # Need to generalise this
-        else:
-            init_overlap_index[new_window.i] = new_window.get_index_set()
-        new_ngram = train_set.data_from_window(new_window)
-        try:
-            self.labelled_ngrams[tuple(new_ngram)] = train_set.labels_from_window(new_window)
-        except TypeError:
-            self.labelled_ngrams[int(new_ngram)] = train_set.labels_from_window(new_window)
-        return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B, self.labelled_ngrams,
-                                  init_size=init_size, init_score=init_score, init_overlap_index=init_overlap_index)
-
-    def is_permutationally_distinct(self, other):
-        # We do a proxy-check for permutation invariance by checking for score and size of solutions
-        if abs(self.score - other.score) < 1e-6 and self.size == other.size:
-            return False
-        else:
-            return True
-
-    def all_permutationally_distinct(self, others):
-        for other_solution in others:
-            if not self.is_permutationally_distinct(other_solution):
-                return False
-        else:
-            return True
-
-    def new_window_unlabelled(self, new_window):
-        if new_window.i not in self.overlap_index:
-            self.overlap_index[new_window.i] = set() # Just in case!
-            return True
-        else:
-            new_word_idx = new_window.get_index_set()
-            if self.overlap_index[new_window.i].intersection(new_word_idx):
-                return False
-            else:
-                return True
-
-    def branch_out(self, other_solutions, window_scores, train_set, allow_propagation):
-        # ASSUME window_scores ALREADY SORTED
-        local_branch = []
-        for window in window_scores:
-            if self.new_window_unlabelled(window):
-                new_ngram = train_set.data_from_window(window)
-                # i.e. if we are allowing automatic labelling and we've already seen this ngram, then skip
-                if allow_propagation and tuple(new_ngram) in self.labelled_ngrams.keys(): # NEEDS FIXING FOR DIMENSIONLESS CASE
-                    continue
-                else:
-                    possible_node = self.add_window(window, train_set)
-                if possible_node.all_permutationally_distinct(other_solutions):
-                    local_branch.append(possible_node)
-                if len(local_branch) == self.B:
-                    return local_branch
-            if self.lock:
-                return [self]
-
-        # No more windows addable
-        if len(local_branch) == 0:
-            self.lock = True
-            return [self]
-        else:
-            return local_branch

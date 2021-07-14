@@ -20,19 +20,8 @@ class ActiveLearningAgent:
             model,
             device,
             propagation_mode,
-            budget_prop=0.5,
-            window_class=SentenceSubsequence
+            budget_prop=0.5
     ):
-        """
-        score: function used to score single words
-        Inputs:
-            output: Tensor, shape (batch size, sequence length, number of possible tags), model outputs of all instances
-        Outputs:
-            a score, with higher meaning better to pick
-
-        budget: total number of elements we can label (words)
-        round_size: total number instances we label each round (sentences)
-        """
 
         self.round_size = round_size
         self.batch_size = batch_size
@@ -44,7 +33,6 @@ class ActiveLearningAgent:
         self.device = device
         self.propagation_mode = propagation_mode
         self.budget_prop = budget_prop
-        self.window_class = window_class     # parameterise this
 
         num_units = sum([instance.size for instance in self.train_set.data])    # parameterise this
         self.budget = num_units * budget_prop
@@ -65,8 +53,8 @@ class ActiveLearningAgent:
     def step(self):
         logging.info('step')
         # TODO: type *everything*
-        instance_scores = self.update_dataset_attributes()
-        self.update_index(instance_scores)
+        self.update_dataset_attributes()
+        self.update_index()
         self.update_datasets()
         logging.info('finished step')
 
@@ -101,7 +89,7 @@ class ActiveLearningAgent:
             initialised with {budget_spent} words  |   remaining word budget: {self.budget}
             """)
 
-    def update_index(self, instance_scores):
+    def update_index(self):
         """
         After a full pass on the unlabelled pool, apply a policy to get the top scoring phrases and add them to
         self.labelled_idx.
@@ -121,7 +109,9 @@ class ActiveLearningAgent:
         logging.info("update index")
 
         all_windows = []
-        for i, word_scores in tqdm(instance_scores.items()):
+        for i in tqdm(range(len(self.train_set))):
+            if self.train_set.index.is_labelled(i):
+                continue
             windows = self.selector.window_generation(i, self.train_set)
             all_windows.extend(windows)
 
@@ -179,35 +169,13 @@ class ActiveLearningAgent:
             logging.warning('no more budget left!')
 
         # logging.info('get sentence scores')
-        for batch_indices in tqdm(self.unlabelled_set):
+        for batch_indices in tqdm(self.unlabelled_set + self.labelled_set):
             # Use normal get_batch here since we don't want to fill anything in, but it doesn't really matter
             # for functionality
             instances, _, lengths, _ = [a.to(self.device) for a in self.train_set.get_batch(batch_indices, labels_important=False)]
             model_attrs = self.model(instances, anneal=True)
             model_attrs = {k: v.detach().cpu().numpy() for k, v in model_attrs.items()}
             self.train_set.update_attributes(batch_indices, model_attrs, lengths)
-      
-            batch_scores = self.acquisition.score(preds=self.train_set.last_preds)
-            batch_scores = self.train_set.process_scores(batch_scores, lengths)
-          
-            for j, i in enumerate(batch_indices):
-                instance_scores_no_nan[i] = batch_scores[j].tolist()
-
-        instance_scores = {}
-        for i, scores in instance_scores_no_nan.items():
-            instance_scores[i] = self.train_set.index.make_nan_if_labelled(i, scores)
-
-        self.round_all_word_scores = instance_scores_no_nan
-        return instance_scores
-
-            # TODO: Move this to the dataset
-            # for j, i in enumerate(batch_indices):
-            #     instance_scores_no_nan[i] = batch_scores[j].detach()
-
-        # TODO: Move this to the next function/to dataset class functionality
-        # instance_scores = {}
-        # for i, scores in instance_scores_no_nan.items():
-        #     instance_scores[i] = self.train_set.index.make_nan_if_labelled(i, scores)
 
     def update_datasets(self):
         unlabelled_instances = set()

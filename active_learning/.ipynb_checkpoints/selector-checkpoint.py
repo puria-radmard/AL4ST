@@ -1,8 +1,11 @@
 import os
 import json
 import logging
+
+import torch
 import numpy as np
-from .batch_querying import BeamSearchSolution
+from .util_classes import BeamSearchSolution, total_sum
+
 
 class Selector:
 
@@ -18,7 +21,6 @@ class Selector:
 
     def window_generation(self, i, dataset):    # Could work better as a decorator?
         unit_scores = self.acquisition.score(i)
-        # TODO: TEST WITH SENTENCES AND WRITE ANY PROCESSING NEEDED HERE
         unit_scores = dataset.index.make_nan_if_labelled(i, unit_scores)
         window_args = self.score_extraction(unit_scores)
         return [self.window_class(i, window["bounds"], window["score"]) for window in window_args]
@@ -113,8 +115,7 @@ class DimensionlessSelector(Selector):
 
     def __init__(self, round_size, acquisition, window_class):
         super(DimensionlessSelector, self).__init__(
-            normalisation_index=1, round_size=round_size, beam_search_parameter=1, acquisition=acquisition,
-            window_class=window_class
+            normalisation_index=1, round_size=round_size, beam_search_parameter=1, acquisition=acquisition, window_class=window_class
         )
 
     def score_aggregation(self, score):
