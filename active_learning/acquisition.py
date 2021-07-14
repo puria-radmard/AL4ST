@@ -6,7 +6,7 @@ class Acquisition:
     def __init__(self, model):
         self.model = model
 
-    def score(self, preds, lengths):
+    def score(self, preds):
         pass
 
 
@@ -15,8 +15,9 @@ class RandomBaselineAcquisition(Acquisition):
     def __init__(self, model):
         super().__init__(model=model)
 
-    def score(self, preds, lengths):
-        return [np.random.randn(length) for length in lengths]
+    def score(self, preds):
+        scores_shape = preds.max(dim=-1)
+        return torch.randn(scores_shape.shape)
 
 
 class LowestConfidenceAcquisition(Acquisition):
@@ -24,10 +25,10 @@ class LowestConfidenceAcquisition(Acquisition):
     def __init__(self, model):
         super().__init__(model=model)
 
-    def score(self, preds, lengths):
+    def score(self, preds):
         # logits (batch_size x sent_length x num_tags [193])
         scores = -preds.max(dim=-1).values  # negative highest logits (batch_size x sent_length)
-        return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
+        return scores
 
 
 class MaximumEntropyAcquisition(Acquisition):
@@ -35,10 +36,10 @@ class MaximumEntropyAcquisition(Acquisition):
     def __init__(self, model):
         super().__init__(model=model)
 
-    def score(self, preds, lengths):
+    def score(self, preds):
         # logits (batch_size x sent_length x num_tags [193])
         scores = torch.sum(-preds * torch.exp(preds), dim=-1)  # entropies of shape (batch_size x sent_length)
-        return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
+        return scores
 
 
 class BALDAcquisition(Acquisition):

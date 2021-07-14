@@ -4,7 +4,7 @@ import logging
 
 import torch
 import numpy as np
-from .util_classes import BeamSearchSolution
+from .util_classes import BeamSearchSolution, total_sum
 
 
 class Selector:
@@ -101,44 +101,19 @@ class Selector:
 
         return out_list
 
-    # NOT USED ANYMORE
-    def get_batch(self, batch, batch_indices, agent):
-        """
-        Same as the original get batch, except targets are now given with a dimension of size num_tags in there.
-        If the word is used in training and appears in self.labelled_idx, this is just one hot encoding
-        else, it is the probability distribution that the most latest model has predicted
-        """
 
-        raise NotImplementedError("Not meant to be used")
+class DimensionlessSelector(Selector):
 
-        padded_sentences, padded_tokens, padded_tags, lengths = \
-            [a.to(agent.device) for a in self.helper.get_batch(batch)]
-        self.model.eval()
-        model_log_probs = self.model(padded_sentences, padded_tokens).detach().to(agent.device)
-        self.model.train()
-        self_supervision_mask = torch.ones(padded_tags.shape)
+    def __init__(self, helper, round_size, model):
+        super().__init__(helper=helper, normalisation_index=1, round_size=round_size, beam_search_parameter=1,
+                         model=model)
 
-        # Fill in the words that have not been queried
-        for sentence_idx, sentence_tags in enumerate(padded_tags):
-            sentence_index = batch_indices[sentence_idx]
-            for word_idx in range(int(lengths[sentence_idx])):
-                if word_idx in agent.index.labelled_idx[sentence_index] or \
-                        word_idx in agent.index.temp_labelled_idx[sentence_index]:  # Labelled or temporarily labelled
-                    pass
-                elif word_idx in agent.index.unlabelled_idx[sentence_index]:  # Not labelled
-                    padded_tags[sentence_idx, word_idx] = \
-                        torch.exp(model_log_probs[sentence_idx, word_idx])
-                    self_supervision_mask[sentence_idx, word_idx] = self.beta
-                else:  # Padding
-                    continue
+    def score_aggregation(self, score):
+        return float(score)
 
-        return (
-            padded_sentences,
-            padded_tokens,
-            padded_tags,
-            lengths,
-            self_supervision_mask
-        )
+    def score_extraction(self, score):
+        score = self.score_aggregation(score)
+        return [{"bounds": ..., "score": score}]
 
 
 class SentenceSelector(Selector):
@@ -158,16 +133,6 @@ class SentenceSelector(Selector):
         """
         score = self.score_aggregation(word_scores)
         return [{"bounds": (0, len(word_scores)), "score": score}]
-
-    def get_batch(self, batch, **args):
-        raise NotImplementedError("Not meant to be used")
-        """
-        No model predictions required!
-        self_supervision mask is all zeros, since everything in the sentence is labelled
-        """
-        padded_sentences, padded_tokens, padded_tags, lengths = self.helper.get_batch(batch)
-        self_supervision_mask = torch.ones(padded_tags.shape)
-        return padded_sentences, padded_tokens, padded_tags, lengths, self_supervision_mask
 
 
 class FixedWindowSelector(Selector):

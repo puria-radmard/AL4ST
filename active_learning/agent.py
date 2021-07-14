@@ -22,7 +22,8 @@ class ActiveLearningAgent:
             model,
             device,
             propagation_mode,
-            budget_prop=0.5
+            budget_prop=0.5,
+            window_class=SentenceSubsequence
     ):
         """
         score: function used to score single words
@@ -46,9 +47,9 @@ class ActiveLearningAgent:
         self.device = device
         self.propagation_mode = propagation_mode
         self.budget_prop = budget_prop
-        self.window_class = SentenceSubsequence     # parameterise this
+        self.window_class = window_class     # parameterise this
 
-        num_units = sum([len(instance) for instance in self.train_set.data])    # parameterise this
+        num_units = sum([instance.size for instance in self.train_set.data])    # parameterise this
         self.budget = num_units * budget_prop
         self.initial_budget = self.budget
 
@@ -92,7 +93,7 @@ class ActiveLearningAgent:
         budget_spent = 0
         for i in randomly_selected_indices:
             self.train_set.index.label_instance(i)
-            budget_spent += len(self.train_set.data[i])
+            budget_spent += self.train_set.data[i].size
 
         self.budget -= budget_spent
 
@@ -127,6 +128,7 @@ class ActiveLearningAgent:
             if self.train_set.index.is_labelled(i):
                 continue
             windows = self.selector.score_extraction(word_scores)
+            # TODO: absorb this into selector class - i.e. make window_class part of selector
             all_windows.extend(
                 [self.window_class(i, window["bounds"], window["score"]) for window in windows]
             )
@@ -138,8 +140,6 @@ class ActiveLearningAgent:
         if self.budget < 0:
             logging.warning('no more budget left!')
 
-        # This is a weak rule anyway but maybe parameterise the empty class?
-        labelled_ngrams_lookup = {k: v for k,v in labelled_ngrams_lookup.items() if v[:,1:].sum()}
 
         total_units = 0
         for window in best_window_scores:
@@ -147,6 +147,9 @@ class ActiveLearningAgent:
             self.train_set.index.label_window(window)
 
         if self.propagation_mode:
+            # This is a weak rule anyway but maybe parameterise the empty class?
+            labelled_ngrams_lookup = {k: v for k, v in labelled_ngrams_lookup.items() if v[:, 1:].sum()}
+
             # This must come after labelling initial set
             propagated_windows = self.propagate_labels(all_windows, labelled_ngrams_lookup)
 
@@ -190,7 +193,8 @@ class ActiveLearningAgent:
             # for functionality
             instances, _, lengths, _ = [a.to(self.device) for a in self.train_set.get_batch(batch_indices, labels_important=False)]
             preds = self.model(instances, anneal=True).detach().cpu()
-            batch_scores = self.acquisition.score(preds=preds, lengths=lengths)
+            batch_scores = self.acquisition.score(preds=preds)
+            batch_scores = self.train_set.process_scores(batch_scores, lengths)
             self.train_set.update_preds(batch_indices, preds, lengths)
             for j, i in enumerate(batch_indices):
                 instance_scores_no_nan[i] = batch_scores[j].tolist()

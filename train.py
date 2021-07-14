@@ -354,7 +354,7 @@ def train_full(model, device, agent, helper, val_set, val_data_groups, original_
 
         logging.info('beginning evaluation')
         val_loss, val_precision, val_recall, val_f1 = \
-            evaluate(model, GroupBatchRandomSampler(val_data_groups, args.batch_size, drop_last=False), val_set,
+            evaluate(model, GroupBatachRandomSampler(val_data_groups, args.batch_size, drop_last=False), val_set,
                      helper, criterion, device)
         train_loss, train_precision, train_recall, train_f1 = \
             evaluate(model, agent.labelled_set, agent.train_set, helper, criterion, device)
@@ -541,7 +541,7 @@ def active_learning_train(args):
     val_set = OneDimensionalSequenceTaggingDataset(
         data=[d[0] for d in val_set],
         labels=[torch.nn.functional.one_hot(torch.tensor(d[-1]), len(tag_set)) for d in val_set],
-        index_class=SentenceIndex,
+        index_class=Index,
         semi_supervision_multiplier=args.beta,
         padding_token=helper.vocab["<pad>"],
         empty_tag=helper.tag_set["O"],
