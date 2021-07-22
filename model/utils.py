@@ -20,11 +20,6 @@ class Helper:
             batch_first=True,
             padding_value=self.vocab["<pad>"],
         )
-        padded_tokens, _ = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in tokens], enforce_sorted=False),
-            batch_first=True,
-            padding_value=self.charset["<pad>"],
-        )
         padded_tags, _ = pad_packed_sequence(
             pack_sequence([torch.LongTensor(_) for _ in tags], enforce_sorted=False),
             batch_first=True,
