@@ -10,10 +10,10 @@ class AcquisitionAggregation:
 
     def aggregation_step(self):
         # This is for learning aggregations, e.g. LSA bandit set up
-        pass
+        raise NotImplementedError
 
     def acquisition_aggregation(self, scores):
-        pass
+        raise NotImplementedError
 
     def score(self, i):
         scores = []
@@ -63,10 +63,10 @@ class DataAwareAcquisition:
         self.dataset = dataset
 
     def score(self, i):
-        pass
+        raise NotImplementedError
 
     def step(self):
-        pass
+        raise NotImplementedError
 
 
 class PredsKLAcquisition(DataAwareAcquisition):

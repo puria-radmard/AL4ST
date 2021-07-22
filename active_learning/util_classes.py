@@ -32,6 +32,7 @@ class ActiveLearningSubset:
         self.access_mode = item
 
     def __getitem__(self, idx):
+        idx = self.indices[idx]
         return self.dataset.__getattr__(self.access_mode)[idx]
 
 
@@ -44,7 +45,7 @@ class ALAttribute:
         self.attr = initialisation
         self.cache = cache
         if cache:
-            self.prev_attr = initialisation
+            self.prev_attr = initialisation.copy()
 
     def __getitem__(self, idx):
         return self.attr[idx]
@@ -65,11 +66,20 @@ class ALAttribute:
         return self.attr[window.i][window.slice]
 
     # Put asserts in here!!!
-    def set_attr_with_window(self, window, new_attr):
+    def update_attr_with_window(self, window, new_attr):
         assert self.get_attr_by_window(window).shape == new_attr.shape
         if self.cache:
-            self.prev_attr[window.i][window.slice] = self.attr[window.i][window.slice]
+            self.prev_attr[window.i][window.slice] = self.attr[window.i][window.slice].copy()
         self.attr[window.i][window.slice] = new_attr
+
+    def update_attr_with_instance(self, i, new_attr):
+        # assert self.attr[i].shape == new_attr.shape
+        if self.cache:
+            try:
+                self.prev_attr[i] = self.attr[i].copy()
+            except AttributeError:
+                self.prev_attr[i] = self.attr[i]
+        self.attr[i] = new_attr
 
     def expand_size(self, new_data):
         self.attr.extend(self.generate_nans(new_data))
@@ -124,10 +134,10 @@ class ActiveLearningDataset:
                 attr.expand_size(new_data)
 
     def add_labels(self, window, labels):
-        self.labels.set_attr_with_window(window, labels)
+        self.labels.update_attr_with_window(window, labels)
 
     def add_temp_labels(self, window, temp_labels):
-        self.temp_labels.set_attr_with_window(window, temp_labels)
+        self.temp_labels.update_attr_with_window(window, temp_labels)
 
     def data_from_window(self, window):
         return self.data.get_attr_by_window(window)
@@ -165,16 +175,16 @@ class ActiveLearningDataset:
 class DimensionlessDataset(ActiveLearningDataset):
 
     def __init__(self, data, labels, index_class, semi_supervision_multiplier,
-                 data_reading_method = lambda x: x,
-                 label_reading_method = lambda x: x):
-        super(DimensionlessDataset, self).__init__(data, labels, index_class, semi_supervision_multiplier)
+                 data_reading_method = lambda x: x, label_reading_method = lambda x: x,
+                 al_attributes = []):
+        super(DimensionlessDataset, self).__init__(data, labels, index_class, semi_supervision_multiplier, al_attributes)
         self.data_reading_method = data_reading_method
         self.label_reading_method = label_reading_method
 
     def update_attributes(self, batch_indices, new_attr_dict, lengths):
         for attr_name, attr_value in new_attr_dict.items():
             for j, i in enumerate(batch_indices):
-                self.__getattr__(attr_name)[i] = attr_value[j]
+                self.__getattr__(attr_name).update_attr_with_instance(i, attr_value[j])
 
     def process_scores(self, scores, lengths=None):
         return scores

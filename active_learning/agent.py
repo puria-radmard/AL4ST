@@ -4,7 +4,7 @@ from typing import List, Dict
 import os
 import json
 
-from torch.utils.data import BatchSampler, SubsetRandomSampler, Subset
+from torch.utils.data import BatchSampler, SubsetRandomSampler
 from tqdm import tqdm
 
 
@@ -116,48 +116,21 @@ class ActiveLearningAgent:
             all_windows.extend(windows)
 
         all_windows.sort(key=lambda e: e.score, reverse=True)
-        best_windows, labelled_ngrams_lookup, budget_spent = \
-            self.selector.select_best(all_windows, self.propagation_mode != 0)
+        best_windows, budget_spent = self.selector.select_best(all_windows)
         self.budget -= budget_spent
         if self.budget < 0:
             logging.warning('no more budget left!')
-
 
         total_units = 0
         for window in best_windows:
             total_units += window.size
             self.train_set.index.label_window(window)
 
-        if self.propagation_mode:
-            # This is a weak rule anyway but maybe parameterise the empty class?
-            labelled_ngrams_lookup = {k: v for k, v in labelled_ngrams_lookup.items() if v[:, 1:].sum()}
-
-            # This must come after labelling initial set
-            propagated_windows = self.propagate_labels(all_windows, labelled_ngrams_lookup)
-
-            for window in propagated_windows:
-                total_units += window.size
-                self.train_set.index.temporarily_label_window(window)
-
-        logging.info(f'added {total_units} words to index mapping, of which {budget_spent} manual')
+        logging.info(f'added {total_units} words to index mappingl')
 
         # No more windows of this size left
         if total_units < self.round_size:
             self.selector.reduce_window_size()
-
-    def propagate_labels(self, all_windows, labelled_ngrams_lookup):
-
-        out_windows = []
-
-        for window in all_windows:
-            if self.train_set.index.new_window_unlabelled(window):
-                units = tuple(self.train_set.data_from_window(window))
-                if units in labelled_ngrams_lookup.keys():
-                    out_windows.append(window)
-                    self.train_set.add_temp_labels(window, labelled_ngrams_lookup[units])  # Move lookup to dataset class too!!!
-                    self.train_set.index.temporarily_label_window(window)
-
-        return out_windows
 
     def update_dataset_attributes(self):
         """
@@ -185,23 +158,14 @@ class ActiveLearningAgent:
         for i in tqdm(range(len(self.train_set))):
             if self.train_set.index.is_partially_unlabelled(i):
                 unlabelled_instances.add(i)
-            if self.propagation_mode == 2:
-                if self.train_set.index.is_partially_labelled(i):
-                    labelled_instances.add(i)
-            else:
-                if self.train_set.index.has_any_labels(i):
-                    labelled_instances.add(i)
-
-        unlabelled_subset = Subset(self.train_set, list(unlabelled_instances))
-        labelled_subset = Subset(self.train_set, list(labelled_instances))
+            if self.train_set.index.has_any_labels(i):
+                labelled_instances.add(i)
 
         self.unlabelled_set = \
             list(BatchSampler(SubsetRandomSampler(list(unlabelled_instances)), self.batch_size, drop_last=False))
-            #list(BatchSampler(SubsetRandomSampler(unlabelled_subset.indices), self.batch_size, drop_last=False))
 
         self.labelled_set = \
             list(BatchSampler(SubsetRandomSampler(list(labelled_instances)), self.batch_size, drop_last=False))
-            #list(BatchSampler(SubsetRandomSampler(labelled_subset.indices), self.batch_size, drop_last=False))
 
     def __iter__(self):
         return self

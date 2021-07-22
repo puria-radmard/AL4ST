@@ -2,19 +2,22 @@ import os
 import json
 import logging
 import numpy as np
-from .batch_querying import BeamSearchSolution
+from .beam_search import BeamSearchSolution
+from .batch_querying import *
+
 
 class Selector:
 
-    def __init__(self, normalisation_index: float, round_size, beam_search_parameter, acquisition, window_class):
+    def __init__(self, normalisation_index: float, round_size, beam_search_parameter, acquisition, window_class,
+                 diversity_policy):
         self.normalisation_index = normalisation_index
         self.round_size = round_size
         self.round_selection = []
         self.all_round_windows = []
         self.beam_search_parameter = beam_search_parameter
         self.acquisition = acquisition
-        self.labelled_ngrams = {}
         self.window_class = window_class
+        self.diversity_policy = diversity_policy
 
     def window_generation(self, i, dataset):    # Could work better as a decorator?
         unit_scores = self.acquisition.score(i)
@@ -37,23 +40,23 @@ class Selector:
         score *= len(word_scores)**(-self.normalisation_index)
         return score
 
-    def select_best(self, window_scores, allow_propagation):
+    def select_best(self, window_scores):
         # window_scores = [(i, [r1, r2], score), ...]
         logging.info("beginning beam search: ")
         print("0 words branched to")
         self.all_round_windows = window_scores
+        self.diversity_policy.init_round(self.agent.train_set)
 
         # Initialise with best B scores
         b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter,
-                                          labelled_ngrams=self.labelled_ngrams)
+                                          diversity_policy=self.diversity_policy)
                        for _ in range(self.beam_search_parameter)]
         b_solutions = [sol.add_window(window_scores[j], self.agent.train_set) for j, sol in enumerate(b_solutions)]
 
         while all([not b.lock for b in b_solutions]):
             temporary_solutions = [] # -> self.beam_search_parameter**2
             for solution in b_solutions:
-                local_branch = solution.branch_out(temporary_solutions, window_scores, train_set=self.agent.train_set,
-                                                   allow_propagation=allow_propagation)
+                local_branch = solution.branch_out(temporary_solutions, window_scores, train_set=self.agent.train_set)
                 temporary_solutions.extend(local_branch)
             temporary_solutions.sort(key=lambda x: x.score, reverse=True)
             b_solutions = temporary_solutions[:self.beam_search_parameter]
@@ -61,12 +64,10 @@ class Selector:
 
         best_solution = max(b_solutions, key=lambda x: x.score)
         best_windows = best_solution.windows
-        labelled_ngrams = best_solution.labelled_ngrams
         budget_spent = best_solution.size
 
-        self.labelled_ngrams.update(labelled_ngrams)
         self.round_selection = best_windows.copy()
-        return best_windows, labelled_ngrams, budget_spent
+        return best_windows, budget_spent
 
     def reduce_window_size(self):
         pass
@@ -111,10 +112,10 @@ class Selector:
 
 class DimensionlessSelector(Selector):
 
-    def __init__(self, round_size, acquisition, window_class):
+    def __init__(self, round_size, acquisition, window_class, diversity_policy):
         super(DimensionlessSelector, self).__init__(
             normalisation_index=1, round_size=round_size, beam_search_parameter=1, acquisition=acquisition,
-            window_class=window_class
+            window_class=window_class, diversity_policy=diversity_policy
         )
 
     def score_aggregation(self, score):
@@ -127,9 +128,10 @@ class DimensionlessSelector(Selector):
 
 class SentenceSelector(Selector):
 
-    def __init__(self, normalisation_index, round_size, acquisition, window_class):
+    def __init__(self, normalisation_index, round_size, acquisition, window_class, diversity_policy):
         super(SentenceSelector, self).__init__(normalisation_index=normalisation_index, round_size=round_size,
-                         beam_search_parameter=1, acquisition=acquisition, window_class=window_class)
+                         beam_search_parameter=1, acquisition=acquisition, window_class=window_class,
+                                               diversity_policy=diversity_policy)
 
     def score_extraction(self, scores_list):
         """
@@ -147,10 +149,10 @@ class SentenceSelector(Selector):
 
 class FixedWindowSelector(Selector):
 
-    def __init__(self, window_size, beta, round_size, beam_search_parameter, acquisition, window_class):
+    def __init__(self, window_size, beta, round_size, beam_search_parameter, acquisition, window_class, diversity_polcy):
         super(FixedWindowSelector, self).__init__(normalisation_index=1.0, round_size=round_size,
                          beam_search_parameter=beam_search_parameter, acquisition=acquisition,
-                         window_class=window_class)
+                         window_class=window_class, diversity_polcy=diversity_polcy)
         self.window_size = window_size
         self.beta = beta
 
