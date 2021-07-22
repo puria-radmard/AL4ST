@@ -4,6 +4,9 @@ import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import weight_norm
+from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence
+
+from utils import prepare_sequence
 
 
 class ConvBlock(nn.Module):
@@ -197,6 +200,8 @@ class Model(nn.Module):
             char_channels,
             char_padding_idx,
             char_kernel_size,
+            char_set,
+            vocab,
             weight,
             word_embedding_size,
             word_channels,
@@ -207,6 +212,9 @@ class Model(nn.Module):
             T
     ):
         super(Model, self).__init__()
+
+        self.char_set = char_set
+        self.vocab = vocab
         self.char_encoder = CharEncoder(
             charset_size,
             char_embedding_size,
@@ -227,6 +235,8 @@ class Model(nn.Module):
         self.char_conv_size = char_channels[-1]
         self.word_embedding_size = word_embedding_size
         self.word_conv_size = word_channels[-1]
+        self.char_set = char_set
+        self.vocab = vocab
         # self.decoder = nn.Linear(self.char_conv_size+self.word_embedding_size+self.word_conv_size, num_tag)
         self.decoder = Decoder(
             self.char_conv_size + self.word_embedding_size + self.word_conv_size,
@@ -237,7 +247,38 @@ class Model(nn.Module):
         self.init_weights()
         self.T = T
 
-    def forward(self, word_input, char_input, anneal=False):
+        self.device = list(self.parameters())[0].device
+
+    def _to(self, device):
+        self.device = device
+        return self.to(device)
+
+    def forward(self, word_input, anneal=False):
+
+        char_idx = []
+        for sentence in word_input:
+            sentence_chars = []
+            for token_idx in sentence:
+                token_chars = []
+                token = self.vocab.idx2key[token_idx]
+                if len(token) <= 20:
+                    token_chars.append(
+                        prepare_sequence(token, self.char_set)
+                        + [self.char_set["<pad>"]] * (20 - len(token))
+                    )
+                else:
+                    token_chars.append(prepare_sequence(token[0:13] + token[-7:], self.char_set))
+
+                sentence_chars.append(token_chars[0].copy())
+            char_idx.append(sentence_chars.copy())
+
+        char_input, _ = pad_packed_sequence(
+            pack_sequence([torch.LongTensor(_) for _ in char_idx], enforce_sorted=False),
+            batch_first=True,
+            padding_value=self.char_set["<pad>"],
+        )
+        char_input = char_input.to(self.device)
+
         batch_size = word_input.size(0)
         seq_len = word_input.size(1)
         char_output = self.char_encoder(char_input.reshape(-1, char_input.size(2))).reshape(
@@ -247,9 +288,11 @@ class Model(nn.Module):
         y = self.decoder(word_output)
 
         if anneal:
-            return F.log_softmax(y / self.T, dim=2)
+            preds = F.log_softmax(y / self.T, dim=2)
         else:
-            return F.log_softmax(y, dim=2)
+            preds = F.log_softmax(y, dim=2)
+
+        return {"last_preds": preds}#, "embeddings": word_output}
 
     def init_weights(self):
         pass
