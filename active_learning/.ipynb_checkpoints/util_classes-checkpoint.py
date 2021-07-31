@@ -161,7 +161,6 @@ class ActiveLearningDataset:
             "last_preds": ALAttribute(name="last_preds", initialisation=[np.nan for l in data], cache=True),
         }
         self.attrs.update({ala.name: ala for ala in al_attributes})
-        assert all([len(v) == len(data) for v in al_attributes])
         self.semi_supervision_multiplier = semi_supervision_multiplier
 
         if index_class.__class__ == type:
