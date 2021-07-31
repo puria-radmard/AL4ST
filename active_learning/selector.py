@@ -5,6 +5,7 @@ import numpy as np
 from .beam_search import BeamSearchSolution
 from .batch_querying import *
 
+TQDM_MODE = True
 
 class Selector:
 
@@ -42,10 +43,14 @@ class Selector:
 
     def select_best(self, window_scores):
         # window_scores = [(i, [r1, r2], score), ...]
-        logging.info("beginning beam search: ")
-        print("0 words branched to")
+        if TQDM_MODE:
+            logging.info("beginning beam search: ")
+
+            print("initialising diversity policy...")
         self.all_round_windows = window_scores
-        self.diversity_policy.init_round(self.agent.train_set)
+        self.diversity_policy.init_round(window_scores, self.agent.train_set)
+        if TQDM_MODE:
+            print("0 words branched to")
 
         # Initialise with best B scores
         b_solutions = [BeamSearchSolution([], self.round_size, self.beam_search_parameter,
@@ -60,7 +65,8 @@ class Selector:
                 temporary_solutions.extend(local_branch)
             temporary_solutions.sort(key=lambda x: x.score, reverse=True)
             b_solutions = temporary_solutions[:self.beam_search_parameter]
-            print(f"at least {min([b.size for b in b_solutions])}/{self.round_size} words branched to", end="\r")
+            if TQDM_MODE:
+                print(f"at least {min([b.size for b in b_solutions])}/{self.round_size} words branched to", end="\r")
 
         best_solution = max(b_solutions, key=lambda x: x.score)
         best_windows = best_solution.windows
@@ -144,6 +150,7 @@ class SentenceSelector(Selector):
         """
 
         score = self.score_aggregation(scores_list)
+        # This can be merged with dimensionless selector no?
         return [{"bounds": (0, len(scores_list)), "score": score}]
 
 
@@ -212,3 +219,24 @@ class VariableWindowSelector(Selector):
 
         outlist = self.windows_selection(indices_and_word_scores)
         return outlist
+
+    
+class DimensionlessSubsetSelectionSelector:
+    
+    def __init__(self, round_size, acquisition, window_class, *args):
+        self.round_size = round_size
+        self.round_selection = []
+        self.all_round_windows = []
+        self.acquisition = acquisition # ADD CHECK FOR THIS
+        self.window_class = window_class
+    
+    def window_generation(self, i, dataset):    # Could work better as a decorator?
+        # TODO: TEST WITH SENTENCES AND WRITE ANY PROCESSING NEEDED HERE
+        return [self.window_class(i, ..., None)]
+
+    def assign_agent(self, agent):
+        self.agent = agent
+        
+    def select_best(self, window_scores):
+        next_windows = self.acquisition.select_next_subset(window_scores, self.round_size)
+        return next_windows, len(next_windows)
