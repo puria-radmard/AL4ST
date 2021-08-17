@@ -7,6 +7,7 @@ from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence
 
 TQDM_MODE = True
 
+
 def total_sum(thing):
     if isinstance(thing, set):
         return sum(thing)
@@ -23,11 +24,10 @@ def total_sum(thing):
 
 
 class ActiveLearningSubset:
-
     def __init__(self, dataset, indices):
         self.indices = indices
         self.dataset = dataset
-        self.access_mode = 'data'
+        self.access_mode = "data"
 
     def __getattr__(self, item):
         self.access_mode = item
@@ -38,7 +38,6 @@ class ActiveLearningSubset:
 
 
 class ALAttribute:
-
     def __init__(self, name: str, initialisation: list, cache: bool = False):
         # might change cache to arbitrary length
 
@@ -71,7 +70,9 @@ class ALAttribute:
     def update_attr_with_window(self, window, new_attr):
         assert self.get_attr_by_window(window).shape == new_attr.shape
         if self.cache:
-            self.prev_attr[window.i][window.slice] = self.attr[window.i][window.slice].copy()
+            self.prev_attr[window.i][window.slice] = self.attr[window.i][
+                window.slice
+            ].copy()
         self.attr[window.i][window.slice] = new_attr
 
     def update_attr_with_instance(self, i, new_attr):
@@ -88,32 +89,42 @@ class ALAttribute:
 
     def add_new_data(self, new_data):
         self.attr.extend(new_data)
-        
-        
+
+
 class MonteCarloAttribute(ALAttribute):
-    
-    def __init__(self, name: str, initialisation: list, ML: int, entropy_function, cache: bool = False):
+    def __init__(
+        self,
+        name: str,
+        initialisation: list,
+        ML: int,
+        entropy_function,
+        cache: bool = False,
+    ):
         super(MonteCarloAttrbiute, self).__init__(name, intialisation, cache)
-        assert all([len(it) == M for it in initialisation]), \
-            f"Initialisation requires list of length M for each instance for {self.name}"
+        assert all(
+            [len(it) == M for it in initialisation]
+        ), f"Initialisation requires list of length M for each instance for {self.name}"
         self.M = M
         self.entropy_function = entropy_function
-        
+
     def __setitem__(self, idx, value):
         raise Exception("Use update_attr_with_instance instead of setting item")
         assert len(value) == self.M, f"Require list of M MC draws for {self.name}"
         self.attr[idx] = value
-        
+
     def get_attr_by_window(self, window):
         return [draw[window.slice] for draw in self.attr[window.i]]
-    
+
         # Put asserts in here!!!
+
     def update_attr_with_window(self, window, new_attr):
         assert len(new_attr) == self.M, f"Require list of M MC draws for {self.name}"
         # assert self.get_attr_by_window(window).shape == new_attr.shape
         if self.cache:
             for m in range(self.M):
-                self.prev_attr[window.i][window.slice][m] = self.attr[window.i][window.slice][m].copy()
+                self.prev_attr[window.i][window.slice][m] = self.attr[window.i][
+                    window.slice
+                ][m].copy()
         self.attr[window.i][window.slice] = new_attr
 
     def update_attr_with_instance(self, i, new_attr):
@@ -125,40 +136,50 @@ class MonteCarloAttribute(ALAttribute):
             except AttributeError:
                 self.prev_attr[i] = self.attr[i]
         self.attr[i] = new_attr
-        
+
     def data_uncertainty(self, window):
         attr = self.get_attr_by_window(window)
         entropies = [self.entropy_function(a) for a in attr]
         return np.mean(entropies)
-    
+
     def total_uncertainty(self, window):
         attr = self.get_attr_by_window(window)
         average_attr = np.mean(attr)
         return self.entropy_function(average_attr)
-    
+
     def knowledge_uncertainty(self, window):
         return self.total_uncertainty(window) - self.data_uncertainty(window)
-        
-        
+
 
 class ActiveLearningDataset:
-
-    def __init__(self,
-                 data,
-                 labels,
-                 index_class,
-                 semi_supervision_multiplier,
-                 al_attributes=[],
-                 ):
+    def __init__(
+        self,
+        data,
+        labels,
+        index_class,
+        semi_supervision_multiplier,
+        al_attributes=[],
+    ):
 
         # When initialised with labels, they must be for all the data.
         # Data without labels (i.e. in the real, non-simulation case), must be added later with self.data
 
         self.attrs = {
-            "data": ALAttribute(name="data", initialisation=[np.array(d) for d in data]),
-            "labels": ALAttribute(name="labels", initialisation=[np.array(l) for l in labels] if labels else [np.nan for l in data]),
-            "temp_labels": ALAttribute(name="temp_labels", initialisation=[np.nan for l in data]),
-            "last_preds": ALAttribute(name="last_preds", initialisation=[np.nan for l in data], cache=True),
+            "data": ALAttribute(
+                name="data", initialisation=[np.array(d) for d in data]
+            ),
+            "labels": ALAttribute(
+                name="labels",
+                initialisation=[np.array(l) for l in labels]
+                if labels
+                else [np.nan for l in data],
+            ),
+            "temp_labels": ALAttribute(
+                name="temp_labels", initialisation=[np.nan for l in data]
+            ),
+            "last_preds": ALAttribute(
+                name="last_preds", initialisation=[np.nan for l in data], cache=True
+            ),
         }
         self.attrs.update({ala.name: ala for ala in al_attributes})
         self.semi_supervision_multiplier = semi_supervision_multiplier
@@ -181,7 +202,7 @@ class ActiveLearningDataset:
     def add_data(self, new_data):
         new_data = [np.array(nd) for nd in new_data]
         for attr_name, attr in self.attrs.items():
-            if attr_name == 'data':
+            if attr_name == "data":
                 attr.add_new_data(new_data)
             else:
                 attr.expand_size(new_data)
@@ -225,17 +246,25 @@ class ActiveLearningDataset:
 
 
 class DimensionlessDataset(ActiveLearningDataset):
-
-    def __init__(self, data, labels, index_class, semi_supervision_multiplier,
-                 data_reading_method = lambda x: x, label_reading_method = lambda x: x,
-                 al_attributes = []):
-        super(DimensionlessDataset, self).__init__(data, labels, index_class, semi_supervision_multiplier, al_attributes)
+    def __init__(
+        self,
+        data,
+        labels,
+        index_class,
+        semi_supervision_multiplier,
+        data_reading_method=lambda x: x,
+        label_reading_method=lambda x: x,
+        al_attributes=[],
+    ):
+        super(DimensionlessDataset, self).__init__(
+            data, labels, index_class, semi_supervision_multiplier, al_attributes
+        )
         self.data_reading_method = data_reading_method
         self.label_reading_method = label_reading_method
 
     def update_attributes(self, batch_indices, new_attr_dict, lengths):
         for attr_name, attr_value in new_attr_dict.items():
-            for j, i in tqdm(enumerate(batch_indices), disable = not TQDM_MODE):
+            for j, i in tqdm(enumerate(batch_indices), disable=not TQDM_MODE):
                 self.__getattr__(attr_name).update_attr_with_instance(i, attr_value[j])
 
     def process_scores(self, scores, lengths=None):
@@ -243,8 +272,12 @@ class DimensionlessDataset(ActiveLearningDataset):
 
     def get_batch(self, batch_indices, labels_important: bool):
 
-        X = torch.vstack([self.data_reading_method(self.data[i]) for i in batch_indices])
-        y = torch.vstack([self.label_reading_method(self.labels[i]) for i in batch_indices])
+        X = torch.vstack(
+            [self.data_reading_method(self.data[i]) for i in batch_indices]
+        )
+        y = torch.vstack(
+            [self.label_reading_method(self.labels[i]) for i in batch_indices]
+        )
         semi_supervision_mask = torch.ones(y.shape)
 
         if labels_important:
@@ -259,25 +292,29 @@ class DimensionlessDataset(ActiveLearningDataset):
                     y[j] = torch.exp(torch.tensor(self.last_preds[instance_index]))
                     semi_supervision_mask[j] = self.semi_supervision_multiplier
                 else:
-                    raise Exception("Instance index does not appear in any of the annotation status lists")
+                    raise Exception(
+                        "Instance index does not appear in any of the annotation status lists"
+                    )
 
             return X, y, torch.tensor([]), semi_supervision_mask
 
         return (
             X,
             torch.tensor([]),
-            torch.tensor([]), # was lengths
-            semi_supervision_mask
+            torch.tensor([]),  # was lengths
+            semi_supervision_mask,
         )
-    
-    
-class ImageClassificationDataset(ActiveLearningDataset):
 
-    def __init__(self, data, labels, index_class, semi_supervision_multiplier,
-                 al_attributes = []):
+
+class ImageClassificationDataset(ActiveLearningDataset):
+    def __init__(
+        self, data, labels, index_class, semi_supervision_multiplier, al_attributes=[]
+    ):
         al_attributes.append(ALAttribute(name="data", initialisation=np.array(data)))
-        
-        super(ImageClassificationDataset, self).__init__(data, labels, index_class, semi_supervision_multiplier, al_attributes)
+
+        super(ImageClassificationDataset, self).__init__(
+            data, labels, index_class, semi_supervision_multiplier, al_attributes
+        )
 
     def update_attributes(self, batch_indices, new_attr_dict, sizes):
         for attr_name, attr_value in new_attr_dict.items():
@@ -306,43 +343,60 @@ class ImageClassificationDataset(ActiveLearningDataset):
                     y[j] = torch.exp(torch.tensor(self.last_preds[instance_index]))
                     semi_supervision_mask[j] = self.semi_supervision_multiplier
                 else:
-                    raise Exception("Instance index does not appear in any of the annotation status lists")
+                    raise Exception(
+                        "Instance index does not appear in any of the annotation status lists"
+                    )
 
             return X, y, torch.tensor([]), semi_supervision_mask
 
         return (
             X,
             torch.tensor([]),
-            torch.tensor([]), # was lengths
-            semi_supervision_mask
+            torch.tensor([]),  # was lengths
+            semi_supervision_mask,
         )
 
 
 class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
-
-    def __init__(self, data, labels, index_class, semi_supervision_multiplier, padding_token, empty_tag,
-                 al_attributes=[]):
-        super().__init__(data, labels, index_class, semi_supervision_multiplier, al_attributes)
+    def __init__(
+        self,
+        data,
+        labels,
+        index_class,
+        semi_supervision_multiplier,
+        padding_token,
+        empty_tag,
+        al_attributes=[],
+    ):
+        super().__init__(
+            data, labels, index_class, semi_supervision_multiplier, al_attributes
+        )
         self.empty_tag = empty_tag
         self.padding_token = padding_token
 
     def update_attributes(self, batch_indices, new_attr_dict, lengths):
         for attr_name, attr_value in new_attr_dict.items():
             for j, i in enumerate(batch_indices):
-                self.__getattr__(attr_name)[i] = attr_value[j][:lengths[j]]
+                self.__getattr__(attr_name)[i] = attr_value[j][: lengths[j]]
 
     def process_scores(self, scores, lengths):
         return [scores[i, :length].reshape(-1) for i, length in enumerate(lengths)]
 
-    def get_batch(self, batch_indices, labels_important: bool): # batch_indices is a list, e.g. one of labelled_set
+    def get_batch(
+        self, batch_indices, labels_important: bool
+    ):  # batch_indices is a list, e.g. one of labelled_set
         """
         labels_important flag just to save a bit of time
         """
 
-        sequences, tags = [self.data[i] for i in batch_indices], [self.labels[i] for i in batch_indices]
+        sequences, tags = [self.data[i] for i in batch_indices], [
+            self.labels[i] for i in batch_indices
+        ]
 
         padded_sentences, lengths = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in sequences], enforce_sorted=False),
+            pack_sequence(
+                [torch.LongTensor(_) for _ in sequences], enforce_sorted=False
+            ),
             batch_first=True,
             padding_value=self.padding_token,
         )
@@ -362,31 +416,25 @@ class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
                     if token_idx in self.index.labelled_idx[sentence_index]:
                         pass
                     elif token_idx in self.index.temp_labelled_idx[sentence_index]:
-                        padded_tags[j, token_idx] = torch.tensor(self.temp_labels[sentence_index][token_idx])
+                        padded_tags[j, token_idx] = torch.tensor(
+                            self.temp_labels[sentence_index][token_idx]
+                        )
                     elif token_idx in self.index.unlabelled_idx[sentence_index]:
-                        padded_tags[j, token_idx] = \
-                            torch.exp(torch.tensor(self.last_preds[sentence_index][token_idx]))       # Maybe change this exp?
-                        semi_supervision_mask[j, token_idx] = self.semi_supervision_multiplier
+                        padded_tags[j, token_idx] = torch.exp(
+                            torch.tensor(self.last_preds[sentence_index][token_idx])
+                        )  # Maybe change this exp?
+                        semi_supervision_mask[
+                            j, token_idx
+                        ] = self.semi_supervision_multiplier
                     else:  # Padding
                         continue
 
-            return (
-                padded_sentences,
-                padded_tags,
-                lengths,
-                semi_supervision_mask
-            )
+            return (padded_sentences, padded_tags, lengths, semi_supervision_mask)
 
-        return (
-            padded_sentences,
-            torch.tensor([]),
-            lengths,
-            semi_supervision_mask
-        )
+        return (padded_sentences, torch.tensor([]), lengths, semi_supervision_mask)
 
 
 class Index:
-
     def __init__(self, dataset):
         self.dataset = dataset
         self.number_partially_labelled_instances = 0
@@ -413,7 +461,9 @@ class Index:
         return bool(total_sum(self.temp_labelled_idx[i]))
 
     def has_any_labels(self, i):
-        return bool(self.is_partially_labelled(i)) or bool(self.is_partially_temporarily_labelled(i))
+        return bool(self.is_partially_labelled(i)) or bool(
+            self.is_partially_temporarily_labelled(i)
+        )
 
     def is_labelled(self, i):
         return not bool(total_sum(self.unlabelled_idx[i]))
@@ -439,13 +489,13 @@ class Index:
             i: {
                 "labelled_idx": self.labelled_idx[i],
                 "unlabelled_idx": self.unlabelled_idx[i],
-                "temp_labelled_idx": self.temp_labelled_idx[i]
-            } for i in item
+                "temp_labelled_idx": self.temp_labelled_idx[i],
+            }
+            for i in item
         }
 
 
 class DimensionlessIndex(Index):
-
     def __init__(self, dataset):
         super(DimensionlessIndex, self).__init__(dataset)
         self.labelled_idx = {j: False for j in range(len(dataset.data))}
@@ -481,16 +531,17 @@ class DimensionlessIndex(Index):
                     "unlabelled_idx": self.unlabelled_idx,
                     "temporarily_labelled_idx": self.temp_labelled_idx,
                 },
-                f
+                f,
             )
 
 
 class SentenceIndex(Index):
-
     def __init__(self, dataset):
         super(SentenceIndex, self).__init__(dataset)
         self.labelled_idx = {j: set() for j in range(len(dataset.data))}
-        self.unlabelled_idx = {j: set(range(len(d))) for j, d in enumerate(dataset.data)}
+        self.unlabelled_idx = {
+            j: set(range(len(d))) for j, d in enumerate(dataset.data)
+        }
         self.temp_labelled_idx = {j: set() for j in range(len(dataset.data))}
 
     def label_instance(self, i):
@@ -520,7 +571,7 @@ class SentenceIndex(Index):
         res = []
         for j in range(len(scores)):
             if j in self.labelled_idx[i]:
-                res.append(float('nan'))
+                res.append(float("nan"))
             else:
                 res.append(scores[j])
         return res
@@ -530,15 +581,18 @@ class SentenceIndex(Index):
             json.dump(
                 {
                     "labelled_idx": {k: list(v) for k, v in self.labelled_idx.items()},
-                    "unlabelled_idx": {k: list(v) for k, v in self.unlabelled_idx.items()},
-                    "temporarily_labelled_idx": {k: list(v) for k, v in self.temp_labelled_idx.items()},
+                    "unlabelled_idx": {
+                        k: list(v) for k, v in self.unlabelled_idx.items()
+                    },
+                    "temporarily_labelled_idx": {
+                        k: list(v) for k, v in self.temp_labelled_idx.items()
+                    },
                 },
-                f
+                f,
             )
 
 
 class AnnotationUnit:
-
     def __init__(self, data_index, bounds, score):
         self.i = data_index
         self.bounds = bounds
@@ -552,7 +606,6 @@ class AnnotationUnit:
 
 
 class SentenceSubsequence(AnnotationUnit):
-
     def __init__(self, data_index, bounds, score):
         super(SentenceSubsequence, self).__init__(data_index, bounds, score)
         self.size = bounds[1] - bounds[0]
@@ -566,7 +619,6 @@ class SentenceSubsequence(AnnotationUnit):
 
 
 class DimensionlessAnnotationUnit(AnnotationUnit):
-
     def __init__(self, data_index, bounds, score):
         super(DimensionlessAnnotationUnit, self).__init__(data_index, bounds, score)
         self.size = 1
@@ -577,10 +629,9 @@ class DimensionlessAnnotationUnit(AnnotationUnit):
 
     def get_index_set(self):
         return {0}
-    
-    
-class EarlyStopper:
 
+
+class EarlyStopper:
     def __init__(self, model, patience: int):  # , maximise: bool):
         """
         An early stopping & callback class.
@@ -593,12 +644,12 @@ class EarlyStopper:
         self.model = model
         self.saved_epoch = 0
         self.scores = []
-        self.min_score = float('inf')
+        self.min_score = float("inf")
 
     def is_overfitting(self, score):
-        '''
+        """
         Unused
-        '''
+        """
         scores = self.scores
         if len(scores) < self.patience:
             self.scores.append(score)
@@ -619,13 +670,13 @@ class EarlyStopper:
         self.scores = scores[1:]
 
         if all_increasing:
-            print('reloading model\n')
+            print("reloading model\n")
             self.model.load_state_dict(self.model_state_dict)
 
         return all_increasing
 
     def check_stop(self, stats_list):
-        
+
         if len(stats_list) > self.patience:
             if stats_list[-1] < stats_list[-2]:
                 self.model_state_dict = self.model.state_dict()
@@ -633,8 +684,8 @@ class EarlyStopper:
 
         if self.patience < 0 or len(stats_list) < self.patience:
             return False
-        if stats_list[-self.patience:] == sorted(stats_list[-self.patience:]):
-            print(f'reloading from epoch {self.saved_epoch}')
+        if stats_list[-self.patience :] == sorted(stats_list[-self.patience :]):
+            print(f"reloading from epoch {self.saved_epoch}")
             self.model.load_state_dict(self.model_state_dict)
             return True
         else:

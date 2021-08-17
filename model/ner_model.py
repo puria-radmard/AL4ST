@@ -11,14 +11,14 @@ from utils import prepare_sequence
 
 class ConvBlock(nn.Module):
     def __init__(
-            self,
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride=1,
-            padding=0,
-            dilation=1,
-            residual=True,
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        residual=True,
     ):
         super(ConvBlock, self).__init__()
         self.conv = weight_norm(
@@ -62,7 +62,7 @@ class ConvBlock(nn.Module):
 
 class ConvNet(nn.Module):
     def __init__(
-            self, channels, kernel_size=3, dropout=0.5, dilated=False, residual=True
+        self, channels, kernel_size=3, dropout=0.5, dilated=False, residual=True
     ):
         super(ConvNet, self).__init__()
         num_levels = len(channels) - 1
@@ -96,14 +96,14 @@ class CharEncoder(nn.Module):
     """
 
     def __init__(
-            self,
-            char_num,
-            embedding_size,
-            channels,
-            kernel_size,
-            padding_idx,
-            dropout,
-            emb_dropout,
+        self,
+        char_num,
+        embedding_size,
+        channels,
+        kernel_size,
+        padding_idx,
+        dropout,
+        emb_dropout,
     ):
         super(CharEncoder, self).__init__()
         self.embed = nn.Embedding(char_num, embedding_size, padding_idx=padding_idx)
@@ -146,8 +146,8 @@ class WordEncoder(nn.Module):
         #  -> (batch_size, embedding_size + char_features, seq_len)
         embeddings = (
             torch.cat((self.embed(word_input), char_input), 2)
-                .transpose(1, 2)
-                .contiguous()
+            .transpose(1, 2)
+            .contiguous()
         )
 
         # print("embeddings:----------",embeddings.size())
@@ -194,22 +194,22 @@ class Decoder(nn.Module):
 
 class Model(nn.Module):
     def __init__(
-            self,
-            charset_size,
-            char_embedding_size,
-            char_channels,
-            char_padding_idx,
-            char_kernel_size,
-            char_set,
-            vocab,
-            weight,
-            word_embedding_size,
-            word_channels,
-            word_kernel_size,
-            num_tag,
-            dropout,
-            emb_dropout,
-            T
+        self,
+        charset_size,
+        char_embedding_size,
+        char_channels,
+        char_padding_idx,
+        char_kernel_size,
+        char_set,
+        vocab,
+        weight,
+        word_embedding_size,
+        word_channels,
+        word_kernel_size,
+        num_tag,
+        dropout,
+        emb_dropout,
+        T,
     ):
         super(Model, self).__init__()
 
@@ -267,13 +267,17 @@ class Model(nn.Module):
                         + [self.char_set["<pad>"]] * (20 - len(token))
                     )
                 else:
-                    token_chars.append(prepare_sequence(token[0:13] + token[-7:], self.char_set))
+                    token_chars.append(
+                        prepare_sequence(token[0:13] + token[-7:], self.char_set)
+                    )
 
                 sentence_chars.append(token_chars[0].copy())
             char_idx.append(sentence_chars.copy())
 
         char_input, _ = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in char_idx], enforce_sorted=False),
+            pack_sequence(
+                [torch.LongTensor(_) for _ in char_idx], enforce_sorted=False
+            ),
             batch_first=True,
             padding_value=self.char_set["<pad>"],
         )
@@ -281,9 +285,9 @@ class Model(nn.Module):
 
         batch_size = word_input.size(0)
         seq_len = word_input.size(1)
-        char_output = self.char_encoder(char_input.reshape(-1, char_input.size(2))).reshape(
-            batch_size, seq_len, -1
-        )
+        char_output = self.char_encoder(
+            char_input.reshape(-1, char_input.size(2))
+        ).reshape(batch_size, seq_len, -1)
         word_output = self.word_encoder(word_input, char_output)
         y = self.decoder(word_output)
 
@@ -292,7 +296,7 @@ class Model(nn.Module):
         else:
             preds = F.log_softmax(y, dim=2)
 
-        return {"last_preds": preds}#, "embeddings": word_output}
+        return {"last_preds": preds}  # , "embeddings": word_output}
 
     def init_weights(self):
         pass

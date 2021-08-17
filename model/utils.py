@@ -5,7 +5,6 @@ from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence
 
 
 class Helper:
-
     def __init__(self, vocab, tag_set, charset, measure_type):
         self.vocab = vocab
         self.tag_set = tag_set
@@ -16,7 +15,9 @@ class Helper:
         sentences, tokens, tags = zip(*batch)
 
         padded_sentences, lengths = pad_packed_sequence(
-            pack_sequence([torch.LongTensor(_) for _ in sentences], enforce_sorted=False),
+            pack_sequence(
+                [torch.LongTensor(_) for _ in sentences], enforce_sorted=False
+            ),
             batch_first=True,
             padding_value=self.vocab["<pad>"],
         )
@@ -26,7 +27,9 @@ class Helper:
             padding_value=self.tag_set["O"],
         )
 
-        padded_tags = nn.functional.one_hot(padded_tags, num_classes=len(self.tag_set)).float()
+        padded_tags = nn.functional.one_hot(
+            padded_tags, num_classes=len(self.tag_set)
+        ).float()
 
         return padded_sentences, padded_tokens, padded_tags, lengths
 
@@ -39,7 +42,7 @@ class Helper:
         output = torch.argmax(output, dim=-1)
         targets = torch.argmax(targets, dim=-1)
 
-        if self.measure_type == 'relations':
+        if self.measure_type == "relations":
             for i in range(batch_size):
                 length = lengths[i]
                 out = output[i][:length].tolist()
@@ -53,14 +56,18 @@ class Helper:
                         if out_triplet == target_triplet:
                             tp += 1
 
-        elif self.measure_type == 'entities':
+        elif self.measure_type == "entities":
             for i in range(batch_size):
                 length = lengths[i]
                 p = output[i][:length].cpu()
                 t = targets[i][:length].cpu()
-                tp_ = int(sum(np.equal(p, t)[t != 0]))        # Exact match by word and is not 'O'
-                fn_ = int(sum(t[p == 0] > 0))                 # Predictions are 'O' but targets are not
-                fp_ = int(sum(1 - np.equal(p, t)[p != 0]))    # Predictions are not 'O' and are wrong
+                tp_ = int(
+                    sum(np.equal(p, t)[t != 0])
+                )  # Exact match by word and is not 'O'
+                fn_ = int(sum(t[p == 0] > 0))  # Predictions are 'O' but targets are not
+                fp_ = int(
+                    sum(1 - np.equal(p, t)[p != 0])
+                )  # Predictions are not 'O' and are wrong
                 tp += tp_
                 tp_fp += tp_ + fp_
                 tp_fn += tp_ + fn_

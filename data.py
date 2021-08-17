@@ -98,30 +98,42 @@ def prepare_data_set(
                 tokens_idx.append(prepare_sequence(token[0:13] + token[-7:], charset))
 
         tags_idx = [tag_set["O"]] * length_sent
-        if sys.argv[2] == 'relation':
+        if sys.argv[2] == "relation":
             for relation_mention in sentence["relationMentions"]:
                 if relation_mention["label"] == "None":
                     continue
                 em1_text = relation_mention["em1Text"].split()
                 res1 = update_tag_seq(
-                    em1_text, sentence_text, relation_mention["label"], 1, tag_set, tags_idx
+                    em1_text,
+                    sentence_text,
+                    relation_mention["label"],
+                    1,
+                    tag_set,
+                    tags_idx,
                 )
                 em2_text = relation_mention["em2Text"].split()
                 res2 = update_tag_seq(
-                    em2_text, sentence_text, relation_mention["label"], 2, tag_set, tags_idx
+                    em2_text,
+                    sentence_text,
+                    relation_mention["label"],
+                    2,
+                    tag_set,
+                    tags_idx,
                 )
                 if res1 or res2:
                     num_overlap += 1
                     overlap = True
 
-        elif sys.argv[2] == 'entity':
+        elif sys.argv[2] == "entity":
             for entity_mention in sentence["entityMentions"]:
                 idx = entity_mention["start"]
                 label = entity_mention["label"]
                 try:
                     tags_idx[idx] = entity_labels[label]
                 except:
-                    import pdb; pdb.set_trace()
+                    import pdb
+
+                    pdb.set_trace()
 
         dataset.append((sentence_idx, tokens_idx, tags_idx))
         if overlap:
@@ -131,7 +143,7 @@ def prepare_data_set(
 
 if __name__ == "__main__":
 
-    root_dir = sys.argv[1] # Fix this later
+    root_dir = sys.argv[1]  # Fix this later
     # e.g. "data/NYT_CoType"
 
     charset = Charset()

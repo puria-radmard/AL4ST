@@ -15,8 +15,10 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
     for idx, batch_indices in enumerate(sampler):
 
         model.eval()
-        sentences, targets, lengths, self_supervision_mask = \
-            [a.to(device) for a in agent.train_set.get_batch(batch_indices, labels_important=True)]
+        sentences, targets, lengths, self_supervision_mask = [
+            a.to(device)
+            for a in agent.train_set.get_batch(batch_indices, labels_important=True)
+        ]
         model.train()
 
         optimizer.zero_grad()
@@ -39,7 +41,7 @@ def train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, a
             cur_loss = total_loss / count
             elapsed = time.time() - start_time
             percent = ((epoch - 1) * len(sampler) + (idx + 1)) / (
-                    args.epochs * len(sampler)
+                args.epochs * len(sampler)
             )
             remaining = elapsed / percent - elapsed
             logging.info(
@@ -70,7 +72,10 @@ def evaluate(model, data_sampler, dataset, helper, criterion, device):
     with torch.no_grad():
         for batch_indices in data_sampler:
 
-            sentences, targets, lengths, _ = [a.to(device) for a in dataset.get_batch(batch_indices, labels_important=True)]     # Labels important here?
+            sentences, targets, lengths, _ = [
+                a.to(device)
+                for a in dataset.get_batch(batch_indices, labels_important=True)
+            ]  # Labels important here?
 
             output = model(sentences)["last_preds"]
             tp, tp_fp, tp_fn = helper.measure(output, targets, lengths)
@@ -93,11 +98,13 @@ def evaluate(model, data_sampler, dataset, helper, criterion, device):
         total_loss / count,
         tp_total / tp_fp_total,
         tp_total / tp_fn_total,
-        2 * tp_total / (tp_fp_total + tp_fn_total)
+        2 * tp_total / (tp_fp_total + tp_fn_total),
     )
 
 
-def train_full(model, device, agent, helper, val_set, val_data_groups, original_lr, criterion, args):
+def train_full(
+    model, device, agent, helper, val_set, val_data_groups, original_lr, criterion, args
+):
     lr = args.lr
     early_stopper = EarlyStopper(patience=args.earlystopping, model=model)
 
@@ -118,23 +125,39 @@ def train_full(model, device, agent, helper, val_set, val_data_groups, original_
 
     optimizer = getattr(optim, args.optim)(model.parameters(), lr=original_lr)
 
-    logging.info(f"Starting training with {num_words} words labelled in {num_sentences} sentences")
+    logging.info(
+        f"Starting training with {num_words} words labelled in {num_sentences} sentences"
+    )
     for epoch in range(1, args.epochs + 1):
 
         train_epoch(model, device, agent, start_time, epoch, optimizer, criterion, args)
 
-        logging.info('beginning evaluation')
-        val_loss, val_precision, val_recall, val_f1 = \
-            evaluate(model, GroupBatchRandomSampler(val_data_groups, args.batch_size, drop_last=False), val_set,
-                     helper, criterion, device)
-        train_loss, train_precision, train_recall, train_f1 = \
-            evaluate(model, agent.labelled_set, agent.train_set, helper, criterion, device)
+        logging.info("beginning evaluation")
+        val_loss, val_precision, val_recall, val_f1 = evaluate(
+            model,
+            GroupBatchRandomSampler(val_data_groups, args.batch_size, drop_last=False),
+            val_set,
+            helper,
+            criterion,
+            device,
+        )
+        train_loss, train_precision, train_recall, train_f1 = evaluate(
+            model, agent.labelled_set, agent.train_set, helper, criterion, device
+        )
 
         elapsed = time.time() - start_time
         logging.info(
             "| epoch {:2d} | elapsed time {:s} | train_loss {:5.4f} | val_loss {:5.4f} | prec {:5.4f} "
             "| rec {:5.4f} | f1 {:5.4f} |".format(
-                epoch, time_display(elapsed), train_loss, val_loss, val_precision, val_recall, val_f1))
+                epoch,
+                time_display(elapsed),
+                train_loss,
+                val_loss,
+                val_precision,
+                val_recall,
+                val_f1,
+            )
+        )
 
         # Anneal the learning rate if no improvement has been seen in the validation dataset.
         if len(all_val_loss) and val_loss > max(all_val_loss):
@@ -172,11 +195,12 @@ def train_full(model, device, agent, helper, val_set, val_data_groups, original_
 # TODO: Make this properly, maybe a config file in the dataset path
 def get_measure_type(path):
     if "NYT_CoType" in path:
-        return 'relations'
-    elif "OntoNotes-5.0" in path or 'conll' in path:
-        return 'entities'
+        return "relations"
+    elif "OntoNotes-5.0" in path or "conll" in path:
+        return "entities"
     else:
         raise NotImplementedError(path)
+
 
 def initialise_model(word_embeddings, args, helper, device, model_class, loss_type):
 
@@ -212,7 +236,7 @@ def initialise_model(word_embeddings, args, helper, device, model_class, loss_ty
         num_tag=len(helper.tag_set),
         dropout=args.dropout,
         emb_dropout=args.emb_dropout,
-        T=args.temperature
+        T=args.temperature,
     )._to(device)
 
     return model, criterion

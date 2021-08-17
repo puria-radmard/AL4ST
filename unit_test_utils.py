@@ -9,10 +9,10 @@ VOCAB_SIZE = 50000
 MIN_SENTENCE_LENGTH = 30
 MAX_SENTENCE_LENGTH = 70
 NUM_TAGS = 193
-TOKEN_LENGTH  = 20
+TOKEN_LENGTH = 20
 TOKEN_MAX_VAL = 94
 
-length_list = list(range(MIN_SENTENCE_LENGTH, MAX_SENTENCE_LENGTH+1))
+length_list = list(range(MIN_SENTENCE_LENGTH, MAX_SENTENCE_LENGTH + 1))
 tags_list = list(range(NUM_TAGS))
 vocab_list = list(range(VOCAB_SIZE))
 token_val_list = list(range(TOKEN_MAX_VAL))
@@ -23,14 +23,20 @@ TEST_DATA = []
 for _ in range(NUM_SENTENCES_TRAIN):
     sent_length = random.choice(length_list)
     one = [random.choice(vocab_list) for _ in range(sent_length)]
-    two = [[random.choice(token_val_list) for _ in range(TOKEN_LENGTH)] for _ in range(sent_length)]
+    two = [
+        [random.choice(token_val_list) for _ in range(TOKEN_LENGTH)]
+        for _ in range(sent_length)
+    ]
     three = [random.choice(tags_list) for _ in range(sent_length)]
     TRAIN_DATA.append([one, two, three])
 
 for _ in range(NUM_SENTENCES_TRAIN):
     sent_length = random.choice(length_list)
     one = [random.choice(vocab_list) for _ in range(sent_length)]
-    two = [[random.choice(token_val_list) for _ in range(TOKEN_LENGTH)] for _ in range(sent_length)]
+    two = [
+        [random.choice(token_val_list) for _ in range(TOKEN_LENGTH)]
+        for _ in range(sent_length)
+    ]
     three = [random.choice(tags_list) for _ in range(sent_length)]
     TEST_DATA.append([one, two, three])
 
@@ -39,7 +45,8 @@ acquisition_class = RandomBaselineAcquisition()
 selector = WordWindowSelector(window_size=5)
 round_size = 100
 batch_size = 32
-device = torch.device('cuda')
+device = torch.device("cuda")
+
 
 def model(sentences, tokens):
     """
@@ -52,9 +59,7 @@ def model(sentences, tokens):
 
     output = torch.log(
         nn.functional.softmax(
-            torch.rand(
-                num_sentences, sentence_size, NUM_TAGS
-            ), dim=-1
+            torch.rand(num_sentences, sentence_size, NUM_TAGS), dim=-1
         )
     )
 
@@ -64,7 +69,9 @@ def model(sentences, tokens):
 def check_consistent_sentence_lengths(agent: ActiveLearningDataset):
 
     for sentence_idx, labelled_indices in agent.labelled_idx.items():
-        assert len(labelled_indices) + len(agent.unlabelled_idx[sentence_idx]) == len(TRAIN_DATA[sentence_idx][0])
+        assert len(labelled_indices) + len(agent.unlabelled_idx[sentence_idx]) == len(
+            TRAIN_DATA[sentence_idx][0]
+        )
 
 
 def search_list_of_lists(ele, lol):
@@ -75,6 +82,7 @@ def search_list_of_lists(ele, lol):
     else:
         return False
 
+
 agent = ActiveLearningDataset(
     train_data=TRAIN_DATA,
     test_data=TEST_DATA,
@@ -84,7 +92,7 @@ agent = ActiveLearningDataset(
     round_size=round_size,
     batch_size=batch_size,
     model=model,
-    device=device
+    device=device,
 )
 
 print("TESTING VARIABLES DEFINED")

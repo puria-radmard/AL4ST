@@ -7,7 +7,6 @@ from torch.utils.data.sampler import *
 
 
 class EarlyStopper:
-
     def __init__(self, model, patience: int):  # , maximise: bool):
         """
         An early stopping & callback class.
@@ -19,7 +18,7 @@ class EarlyStopper:
         self.model_state_dict = None
         self.model = model
         self.scores = []
-        self.min_score = float('inf')
+        self.min_score = float("inf")
 
     def is_overfitting(self, score):
         scores = self.scores
@@ -42,9 +41,8 @@ class EarlyStopper:
         self.scores = scores[1:]
 
         if all_increasing:
-            print(f'reloading model\n')
+            print(f"reloading model\n")
             self.model.load_state_dict(self.model_state_dict)
-    
 
     def check_stop(self, stats_list):
 
@@ -57,7 +55,6 @@ class EarlyStopper:
 
 
 class ModifiedKL(nn.Module):
-
     def __init__(self, weight):
         """
         KL mask not used at the moment as we bypassed the log in KL, so o.h.e vectors can be used for it
@@ -72,7 +69,7 @@ class ModifiedKL(nn.Module):
 
     def forward(self, pred_log_probs, target_probs, self_supervision_mask):
         # loss of size [batch, length, classes]
-        loss = - pred_log_probs * target_probs
+        loss = -pred_log_probs * target_probs
         loss *= self.weight
         loss *= self_supervision_mask
         # loss of size [batch, length]

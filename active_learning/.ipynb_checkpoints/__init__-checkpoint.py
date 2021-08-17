@@ -7,6 +7,12 @@ from . import util_classes
 
 
 def disable_tqdm():
-    for mdl in [acquisition, agent, batch_querying, beam_search, selector, util_classes]:
+    for mdl in [
+        acquisition,
+        agent,
+        batch_querying,
+        beam_search,
+        selector,
+        util_classes,
+    ]:
         mdl.TQDM_MODE = False
-        

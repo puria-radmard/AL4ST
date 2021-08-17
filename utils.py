@@ -87,7 +87,7 @@ def save(obj, path):
 
 def load(path):
     with open(path, "rb") as f:
-        return pickle.load(f, encoding='latin1')
+        return pickle.load(f, encoding="latin1")
 
 
 def time_display(s):

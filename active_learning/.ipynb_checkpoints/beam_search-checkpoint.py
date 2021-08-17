@@ -2,8 +2,18 @@ from .batch_querying import *
 
 TQDM_MODE = True
 
+
 class BeamSearchSolution:
-    def __init__(self, windows, max_size, B, diversity_policy, init_size=None, init_score=None, init_overlap_index={}):
+    def __init__(
+        self,
+        windows,
+        max_size,
+        B,
+        diversity_policy,
+        init_size=None,
+        init_score=None,
+        init_overlap_index={},
+    ):
         self.windows = windows
         if not init_score:
             self.score = sum([w.score for w in windows])
@@ -27,13 +37,21 @@ class BeamSearchSolution:
         init_score = self.score + new_window.score
         init_overlap_index = self.overlap_index.copy()
         if new_window.i in init_overlap_index:
-            init_overlap_index[new_window.i] = init_overlap_index[new_window.i].union(new_window.get_index_set()) # Need to generalise this
+            init_overlap_index[new_window.i] = init_overlap_index[new_window.i].union(
+                new_window.get_index_set()
+            )  # Need to generalise this
         else:
             init_overlap_index[new_window.i] = new_window.get_index_set()
         new_ngram = train_set.data_from_window(new_window)
-        return BeamSearchSolution(self.windows + [new_window], self.max_size, self.B,
-                                  init_size=init_size, init_score=init_score, init_overlap_index=init_overlap_index,
-                                  diversity_policy=self.diversity_policy)
+        return BeamSearchSolution(
+            self.windows + [new_window],
+            self.max_size,
+            self.B,
+            init_size=init_size,
+            init_score=init_score,
+            init_overlap_index=init_overlap_index,
+            diversity_policy=self.diversity_policy,
+        )
 
     def is_permutationally_distinct(self, other):
         # We do a proxy-check for permutation invariance by checking for score and size of solutions
@@ -51,7 +69,7 @@ class BeamSearchSolution:
 
     def new_window_unlabelled(self, new_window):
         if new_window.i not in self.overlap_index:
-            self.overlap_index[new_window.i] = set() # Just in case!
+            self.overlap_index[new_window.i] = set()  # Just in case!
             return True
         else:
             new_word_idx = new_window.get_index_set()

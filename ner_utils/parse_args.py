@@ -6,60 +6,98 @@ def parse_args():
         description="Joint Extraction of Entities and Relations"
     )
     parser.add_argument(
-        "-W", "--window", nargs='+',
+        "-W",
+        "--window",
+        nargs="+",
         help="size of window acquired each time in words. set -1 for full sentence, two for range",
-        required=True
+        required=True,
     )
     parser.add_argument(
-        "-A", "--acquisition", type=str, help="acquisition function used by agent. choose from 'rand' and 'lc'",
-        required=True
+        "-A",
+        "--acquisition",
+        type=str,
+        help="acquisition function used by agent. choose from 'rand' and 'lc'",
+        required=True,
     )
     parser.add_argument(
-        "-I", "--initprop", type=float,
+        "-I",
+        "--initprop",
+        type=float,
         help="proportion of sentences of training set labelled before first round. [0,1]",
-        default=0.1
+        default=0.1,
     )
     parser.add_argument(
-        "-R", "--roundsize", type=int,
-        help="number of words acquired made per round (rounded up to closest possible each round)", default=80000
+        "-R",
+        "--roundsize",
+        type=int,
+        help="number of words acquired made per round (rounded up to closest possible each round)",
+        default=80000,
     )
     parser.add_argument(
-        "-propagation", "--propagation_mode", type=int,
-        help="0 = no propagation, 1 = propagation, training on all sentences, 2 = propagation, training only on sentences with some real labels"
+        "-propagation",
+        "--propagation_mode",
+        type=int,
+        help="0 = no propagation, 1 = propagation, training on all sentences, 2 = propagation, training only on sentences with some real labels",
     )
     parser.add_argument(
-        "--beta", type=float, help="Weight (should be in [0,1]) that self-supervised losses are multiplied by",
-        required=True
+        "--beta",
+        type=float,
+        help="Weight (should be in [0,1]) that self-supervised losses are multiplied by",
+        required=True,
     )
     parser.add_argument(
-        "-alpha", "--alpha", type=float,
+        "-alpha",
+        "--alpha",
+        type=float,
         help="sub-sequence are normalised by L^-alpha where L is the subsequence length",
-        required=True
+        required=True,
     )
     parser.add_argument(
-        "-T", "--temperature", type=float,
-        help="Temperature of scoring annealing. Does not affect W=-1 and beta=0 cases", required=True
+        "-T",
+        "--temperature",
+        type=float,
+        help="Temperature of scoring annealing. Does not affect W=-1 and beta=0 cases",
+        required=True,
     )
-    parser.add_argument("-B", "--beam_search", type=int, default=1,
-                        help="Beam search parameter. B=1 means a greedy search")
-    parser.add_argument("-D", "--data_path", type=str, default="/home/pradmard/repos/data/OntoNotes-5.0/NER/")
+    parser.add_argument(
+        "-B",
+        "--beam_search",
+        type=int,
+        default=1,
+        help="Beam search parameter. B=1 means a greedy search",
+    )
+    parser.add_argument(
+        "-D",
+        "--data_path",
+        type=str,
+        default="/home/pradmard/repos/data/OntoNotes-5.0/NER/",
+    )
     # parser.add_argument(
     #     "--labelthres", type=float, help="proportion of sentence that must be manually labelled before it is used
     #     for training", required = True
     # )
 
     parser.add_argument(
-        "--earlystopping", type=int, help="number of epochs of F1 decrease before early stopping", default=2
+        "--earlystopping",
+        type=int,
+        help="number of epochs of F1 decrease before early stopping",
+        default=2,
     )
     parser.add_argument(
-        "--batch_size", type=int, default=32, metavar="N", help="batch size (default: 32)"
+        "--batch_size",
+        type=int,
+        default=32,
+        metavar="N",
+        help="batch size (default: 32)",
     )
-    parser.add_argument("--cuda", default=True, action="store_true", help="use CUDA (default: True)")
+    parser.add_argument(
+        "--cuda", default=True, action="store_true", help="use CUDA (default: True)"
+    )
     parser.add_argument(
         "--dropout",
         type=float,
         default=0.5,
-        help="dropout applied to layers (default: 0.5)"
+        help="dropout applied to layers (default: 0.5)",
     )
     parser.add_argument(
         "--emb_dropout",
@@ -90,7 +128,10 @@ def parse_args():
         help="word-level kernel size (default: 3)",
     )
     parser.add_argument(
-        "--emsize", type=int, default=50, help="size of character embeddings (default: 50)"
+        "--emsize",
+        type=int,
+        default=50,
+        help="size of character embeddings (default: 50)",
     )
     parser.add_argument(
         "--char_layers",
@@ -127,8 +168,10 @@ def parse_args():
         "--lr", type=float, default=1, help="initial learning rate (default: 1)"
     )
     parser.add_argument(
-        "--lr_decrease", type=float, default=1,
-        help="learning rate annealing factor on non-improving epochs (default: 1)"
+        "--lr_decrease",
+        type=float,
+        default=1,
+        help="learning rate annealing factor on non-improving epochs (default: 1)",
     )
     parser.add_argument(
         "--optim", type=str, default="SGD", help="optimizer type (default: SGD)"

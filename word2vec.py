@@ -39,7 +39,7 @@ def save_numpy_array(root_dir, wv):
 
     word_matrix = np.stack([wv[w] for w in vocab if w in wv.vocab.keys()], axis=0)
 
-    with open(os.path.join(root_dir, "word2vec.vectors.npy"), 'wb') as npy_file:
+    with open(os.path.join(root_dir, "word2vec.vectors.npy"), "wb") as npy_file:
 
         np.save(npy_file, word_matrix)
 
@@ -56,7 +56,9 @@ if __name__ == "__main__":
     sentences = LineSentence(os.path.join(root_dir, "corpus.txt"))
     print("Made sentences")
 
-    model = Word2Vec(sentences, sg=1, size=300, workers=4, iter=8, negative=8, min_count=1)
+    model = Word2Vec(
+        sentences, sg=1, size=300, workers=4, iter=8, negative=8, min_count=1
+    )
     print("Made model")
 
     word_vectors = model.wv
@@ -67,6 +69,7 @@ if __name__ == "__main__":
     print("Saved WVs")
 
     word_vectors.save_word2vec_format(
-        os.path.join(root_dir, "word2vec.txt"), fvocab=os.path.join(root_dir, "vocab.txt")
+        os.path.join(root_dir, "word2vec.txt"),
+        fvocab=os.path.join(root_dir, "vocab.txt"),
     )
     print("Complete!")
