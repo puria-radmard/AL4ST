@@ -3,12 +3,15 @@ import random
 from random import sample
 from typing import List, Dict
 import os
+import numpy as np
+import pandas as pd
 import json
 
 from torch.utils.data import BatchSampler, SubsetRandomSampler
 from tqdm import tqdm
 
 from active_learning.util_classes import RenovationError
+from active_learning.data_utils import command_line
 
 TQDM_MODE = True
 
@@ -170,7 +173,7 @@ class AgentBase:
             total_units += window.size
             self.train_set.index.label_window(window)
 
-        logging.info(f"added {total_units} words to index mappingl")
+        logging.info(f"added {total_units} words to index mapping")
 
         # No more windows of this size left
         if total_units < self.selector.round_size:
@@ -180,11 +183,84 @@ class AgentBase:
 class ActiveLearningAgent(AgentBase):
     def __init__(self, train_set, batch_size, selector_class, model, device, budget_prop=0.5):
         super(ActiveLearningAgent, self).__init__(train_set, batch_size, selector_class, model, device, budget_prop)
-        # ADD AN EXCEPTION FOR THE WRONG TYPE HERE
+        # ADD AN EXCEPTION FOR THE WRONG TYPE OF SELECTOR HERE
 
 
 class SubsetSelectionAgent(AgentBase):
     def __init__(self, train_set, batch_size, selector_class, model, device, budget_prop=0.5):
         super(SubsetSelectionAgent, self).__init__(train_set, batch_size, selector_class, model, device, budget_prop)
 
+        
+class KaldiAgent(AgentBase):
+    def __init__(self, train_set, batch_size, selector_class, model, device, budget_prop=0.5):
+        super(Kaldi, self).__init__(train_set, batch_size, selector_class, model, device, budget_prop)
+        
+        command_line('. path.sh')
+        
+        # examples - parameterise/functionise later
+        self.labelled_utt_list_path = "al_scripts/labelled_utt_list_file"
+        self.unlabelled_utt_list_path = "al_scripts/unlabelled_utt_list_file"
+        self.pool_data_dir = "data/pool"
+        self.labelled_data_dir = "data/subset"
+        self.unlabelled_data_dir = "data/unlabelled"
+        
+        self.utils_dir = "./utils"
+        self.base_dir = "./base"
+        
+        self.labelled_hte_path = "al_scripts/HTE.al.kaldi.system.sh"
+        
+        self.feature_names = ['plp', 'fbk_pitch_pov_kaldi']
+    
+    @staticmethod
+    def get_clustersize(feature_path, lim = 150):
+        utt2spk_path = os.path.join(feature_path, "utt2spk")
+        utt2spk_df = pd.read_csv(utt2spk_path, sep = " ", header = None)
+        spk_list = np.unique(utt2spk_df[1].tolist())
+        return min([len(spk_list), lim])
+    
+    def prepare_feat_subset(self, feature_name):
+        subset_data_dir_path = os.path.join(self.utils_dir, 'data/subset_data_dir.sh')
+        pool_feat_dir = os.path.join(self.pool_data_dir, feature_name)
+        labelled_feat_dir = os.path.join(self.labelled_data_dir, feature_name)
+        unlabelled_feat_dir = os.path.join(self.unlabelled_data_dir, feature_name)
+        command_line(f'{subset_data_dir_path} --utt-list {self.labelled_utt_list_path} {pool_feat_dir} {labelled_feat_dir}')
+        command_line(f'{subset_data_dir_path} --utt-list {self.unlabelled_utt_list_path} {pool_feat_dir} {unlabelled_feat_dir}')
+        
+    def combine_feat_subset(self, feature_name, lim = 1.55):
+        combine_script_path = os.path.join(self.utils_dir, 'data/combine_short_segments.sh')
+        labelled_feat_dir = os.path.join(self.labelled_data_dir, feature_name)
+        # not combining unlabelled set?
+        command_line(f'{combine_script_path} {labelled_feat_dir} {lim} {labelled_feat_dir}-comb')   
+        
+    def update_datasets(self):
+        
+        # These will be filled with utterance ids (e.g. "BPL202-10966-20131219-010336-sc_SS1MXXX_0000000_0001257")
+        self.unlabelled_set = set()
+        self.labelled_set = set()
 
+        logging.info("update datasets")
+        for i in tqdm(range(len(self.train_set)), disable=not TQDM_MODE):
+            if self.train_set.index.is_partially_unlabelled(i):
+                self.unlabelled_set.add(i)
+            if self.train_set.index.has_any_labels(i):
+                self.labelled_set.add(i)
+                
+        self.unlabelled_set = list(self.unlabelled_set)
+        self.labelled_set = list(self.labelled_set)
+                
+        with open(self.labelled_utt_list_path, 'w') as f:
+            # is sorting an issue? Kaldi might have a case for this
+            for utt_id in self.labelled_set:
+                f.write(utt_id) # +\n ??
+        
+        with open(self.unlabelled_utt_list_path, 'w') as f:
+            # is sorting an issue? Kaldi might have a case for this
+            for utt_id in self.unlabelled_set:
+                f.write(utt_id) # +\n ??           
+        
+        for feature_name in self.feature_names:
+            self.prepare_feat_subset(feature_name)
+            self.combine_feat_subset(feature_name)
+
+        self.generate_
+        

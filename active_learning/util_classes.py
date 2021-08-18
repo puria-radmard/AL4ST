@@ -4,25 +4,11 @@ import os
 from numpy import ndarray
 import torch
 from tqdm import tqdm
+from active_learning.data_utils import total_sum
 from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence
 from torch.distributions.categorical import Categorical
 
 TQDM_MODE = True
-
-
-def total_sum(thing):
-    if isinstance(thing, set):
-        return sum(thing)
-    elif isinstance(thing, list):
-        first_sum = sum(thing)
-        if isinstance(first_sum, int) or isinstance(first_sum, float):
-            return first_sum
-        else:
-            return sum(first_sum)
-    elif isinstance(thing, ndarray):
-        return sum(thing)
-    elif isinstance(thing, bool):
-        return 1 if thing else 0
 
 
 class ActiveLearningSubset:

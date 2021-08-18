@@ -1,26 +1,14 @@
 # noinspection PyInterpreter
 import json
 import os
-import numpy as np
+from numpy import ndarray
 import torch
+from tqdm import tqdm
+from active_learning.data_utils import total_sum
 from torch.nn.utils.rnn import pad_packed_sequence, pack_sequence
+from torch.distributions.categorical import Categorical
 
 TQDM_MODE = True
-
-
-def total_sum(thing):
-    if isinstance(thing, set):
-        return sum(thing)
-    elif isinstance(thing, list):
-        first_sum = np.sum(thing)
-        if isinstance(first_sum, int) or isinstance(first_sum, float):
-            return first_sum
-        else:
-            return np.sum(first_sum)
-    elif isinstance(thing, np.ndarray):
-        return np.sum(thing)
-    elif isinstance(thing, bool):
-        return 1 if thing else 0
 
 
 class ActiveLearningSubset:
@@ -38,9 +26,8 @@ class ActiveLearningSubset:
 
 
 class ALAttribute:
-    def __init__(self, name: str, initialisation: list, cache: bool = False):
+    def __init__(self, name: str, initialisation: torch.tensor, cache: bool = False):
         # might change cache to arbitrary length
-
         self.name = name
         self.attr = initialisation
         self.cache = cache
@@ -52,16 +39,13 @@ class ALAttribute:
 
     def __setitem__(self, idx, value):
         raise Exception("Use update_attr_with_instance instead of setting item")
-        self.attr[idx] = value
 
     def __len__(self):
         return len(self.attr)
 
     def generate_nans(self, new_data):
-        if isinstance(new_data, list):
-            return [np.nan for nd in new_data]
-        else:
-            return np.nan
+        nans = [float('nan') for nd in new_data] if isinstance(new_data, list) else float('nan')
+        raise RenovationError('Need to find a way to add more data under pytorch implementation')
 
     def get_attr_by_window(self, window):
         return self.attr[window.i][window.slice]
@@ -91,60 +75,51 @@ class ALAttribute:
         self.attr.extend(new_data)
 
 
-class MonteCarloAttribute(ALAttribute):
+class StochasticAttribute(ALAttribute):
     def __init__(
         self,
         name: str,
         initialisation: list,
-        ML: int,
-        entropy_function,
+        M: int,
         cache: bool = False,
     ):
-        super(MonteCarloAttrbiute, self).__init__(name, intialisation, cache)
-        assert all(
-            [len(it) == M for it in initialisation]
-        ), f"Initialisation requires list of length M for each instance for {self.name}"
+        super(StochasticAttribute, self).__init__(name, initialisation, cache)
+        assert len(initialisation) == M, f"Initialisation for {self.name} requires list of length M"
+        assert [initialisation[m].shape == initialisation[0].shape for m in range(M)]
         self.M = M
-        self.entropy_function = entropy_function
 
     def __setitem__(self, idx, value):
         raise Exception("Use update_attr_with_instance instead of setting item")
-        assert len(value) == self.M, f"Require list of M MC draws for {self.name}"
-        self.attr[idx] = value
 
     def get_attr_by_window(self, window):
-        return [draw[window.slice] for draw in self.attr[window.i]]
-
-        # Put asserts in here!!!
+        return [draw[window.i][window.slice] for draw in self.attr]
 
     def update_attr_with_window(self, window, new_attr):
         assert len(new_attr) == self.M, f"Require list of M MC draws for {self.name}"
         # assert self.get_attr_by_window(window).shape == new_attr.shape
-        if self.cache:
-            for m in range(self.M):
-                self.prev_attr[window.i][window.slice][m] = self.attr[window.i][
-                    window.slice
-                ][m].copy()
-        self.attr[window.i][window.slice] = new_attr
+        for m in range(self.M):
+            self.attr[m][window.i][window.slice] = new_attr[m]
+            if self.cache: self.prev_attr[m][window.i][window.slice] = self.attr[m][window.i][window.slice]
 
     def update_attr_with_instance(self, i, new_attr):
         # assert self.attr[i].shape == new_attr.shape
         assert len(new_attr) == self.M, f"Require list of M MC draws for {self.name}"
-        if self.cache:
-            try:
-                self.prev_attr[i] = self.attr[i].copy()
-            except AttributeError:
-                self.prev_attr[i] = self.attr[i]
-        self.attr[i] = new_attr
+        for m in range(self.M):
+            self.attr[i] = new_attr
+            if self.cache: self.prev_attr[m][i] = self.attr[m][i]
+
+    @staticmethod
+    def entropy_function(probs):
+        return Categorical(probs=probs).entropy()
 
     def data_uncertainty(self, window):
         attr = self.get_attr_by_window(window)
         entropies = [self.entropy_function(a) for a in attr]
-        return np.mean(entropies)
+        return torch.mean(entropies)
 
     def total_uncertainty(self, window):
         attr = self.get_attr_by_window(window)
-        average_attr = np.mean(attr)
+        average_attr = torch.mean(attr)
         return self.entropy_function(average_attr)
 
     def knowledge_uncertainty(self, window):
@@ -158,36 +133,25 @@ class ActiveLearningDataset:
         labels,
         index_class,
         semi_supervision_multiplier,
-        al_attributes=[],
+        al_attributes=None,
     ):
 
         # When initialised with labels, they must be for all the data.
         # Data without labels (i.e. in the real, non-simulation case), must be added later with self.data
 
+        if al_attributes is None: al_attributes = []
+        nan_init = torch.ones_like(labels)*float('nan')
+
         self.attrs = {
-            "data": ALAttribute(
-                name="data", initialisation=[np.array(d) for d in data]
-            ),
-            "labels": ALAttribute(
-                name="labels",
-                initialisation=[np.array(l) for l in labels]
-                if labels
-                else [np.nan for l in data],
-            ),
-            "temp_labels": ALAttribute(
-                name="temp_labels", initialisation=[np.nan for l in data]
-            ),
-            "last_preds": ALAttribute(
-                name="last_preds", initialisation=[np.nan for l in data], cache=True
-            ),
+            "data": ALAttribute(name="data", initialisation=torch.tensor(data)),
+            "labels": ALAttribute(name="labels", initialisation=torch.tensor(labels)),
+            "temp_labels": ALAttribute(name="temp_labels", initialisation=nan_init.copy()),
+            "last_preds": ALAttribute(name="last_preds", initialisation=nan_init.copy(), cache=True),
         }
+
         self.attrs.update({ala.name: ala for ala in al_attributes})
         self.semi_supervision_multiplier = semi_supervision_multiplier
-
-        if index_class.__class__ == type:
-            self.index = index_class(self)
-        else:
-            self.index = index_class
+        self.index = index_class(self)
 
     def __getattr__(self, attr):
         return self.attrs[attr]
@@ -200,12 +164,8 @@ class ActiveLearningDataset:
             self.attrs[attr_name] = new_attribute
 
     def add_data(self, new_data):
-        new_data = [np.array(nd) for nd in new_data]
-        for attr_name, attr in self.attrs.items():
-            if attr_name == "data":
-                attr.add_new_data(new_data)
-            else:
-                attr.expand_size(new_data)
+        new_data = [torch.array(nd) for nd in new_data]
+        _ = [v.add_new_data(new_data) if k == 'data' else v.expand_size(new_data) for k, v in self.attrs.items()]
 
     def add_labels(self, window, labels):
         self.labels.update_attr_with_window(window, labels)
@@ -308,9 +268,9 @@ class DimensionlessDataset(ActiveLearningDataset):
 
 class ImageClassificationDataset(ActiveLearningDataset):
     def __init__(
-        self, data, labels, index_class, semi_supervision_multiplier, al_attributes=[]
+        self, data, labels, index_class, semi_supervision_multiplier, al_attributes=None
     ):
-        al_attributes.append(ALAttribute(name="data", initialisation=np.array(data)))
+        al_attributes.append(ALAttribute(name="data", initialisation=torch.tensor(data)))
 
         super(ImageClassificationDataset, self).__init__(
             data, labels, index_class, semi_supervision_multiplier, al_attributes
@@ -389,9 +349,7 @@ class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
         labels_important flag just to save a bit of time
         """
 
-        sequences, tags = [self.data[i] for i in batch_indices], [
-            self.labels[i] for i in batch_indices
-        ]
+        sequences, tags = [self.data[i] for i in batch_indices], [self.labels[i] for i in batch_indices]
 
         padded_sentences, lengths = pad_packed_sequence(
             pack_sequence(
@@ -416,22 +374,18 @@ class OneDimensionalSequenceTaggingDataset(ActiveLearningDataset):
                     if token_idx in self.index.labelled_idx[sentence_index]:
                         pass
                     elif token_idx in self.index.temp_labelled_idx[sentence_index]:
-                        padded_tags[j, token_idx] = torch.tensor(
-                            self.temp_labels[sentence_index][token_idx]
-                        )
+                        padded_tags[j, token_idx] = torch.tensor(self.temp_labels[sentence_index][token_idx])
                     elif token_idx in self.index.unlabelled_idx[sentence_index]:
-                        padded_tags[j, token_idx] = torch.exp(
-                            torch.tensor(self.last_preds[sentence_index][token_idx])
-                        )  # Maybe change this exp?
+                        padded_tags[j, token_idx] = torch.exp(torch.tensor(self.last_preds[sentence_index][token_idx]))
                         semi_supervision_mask[
                             j, token_idx
                         ] = self.semi_supervision_multiplier
                     else:  # Padding
                         continue
 
-            return (padded_sentences, padded_tags, lengths, semi_supervision_mask)
+            return padded_sentences, padded_tags, lengths, semi_supervision_mask
 
-        return (padded_sentences, torch.tensor([]), lengths, semi_supervision_mask)
+        return padded_sentences, torch.tensor([]), lengths, semi_supervision_mask
 
 
 class Index:
@@ -690,3 +644,9 @@ class EarlyStopper:
             return True
         else:
             return False
+
+
+class RenovationError(Exception):
+    def __init__(self, message):
+        # Call the base class constructor with the parameters it needs
+        super().__init__(message)
